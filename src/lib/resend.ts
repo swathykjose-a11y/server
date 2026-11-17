@@ -31,8 +31,19 @@ interface OrderEmailData {
   paymentStatus: string;
 }
 
+export interface ServerErrorAlertData {
+  error: Error | unknown;
+  context?: string;
+  requestId?: string;
+  path?: string;
+  method?: string;
+  statusCode?: number;
+  metadata?: Record<string, unknown>;
+}
+
 class EmailService {
   private resend: Resend | null = null;
+  private recentErrorAlerts = new Map<string, number>();
 
   constructor() {
     if (env.RESEND_API_KEY) {
@@ -150,7 +161,7 @@ class EmailService {
   }
 
   /**
-   * Send new order notification to the brand owner/admin at bhavartheankit@gmail.com
+   * Send new order notification to the brand owner/admin (swathykjose@gmail.com)
    * with customer shipping information to easily order from the supplier website (dropshipping).
    */
   async sendNewOrderAlertToAdmin(data: OrderEmailData): Promise<boolean> {
@@ -214,6 +225,99 @@ class EmailService {
     return this.sendMail({
       to: adminEmail,
       subject: `🚨 [Dropship Alert] New Order #${data.orderNumber} placed by ${data.customerName} (₹${data.total.toFixed(0)})`,
+      html,
+    });
+  }
+
+  /**
+   * Send server error / issue alert to developer (bhavartheankit@gmail.com).
+   * Includes 60-second rate-limiting per unique signature to prevent email flooding.
+   */
+  async sendServerErrorAlert(data: ServerErrorAlertData): Promise<boolean> {
+    const devEmail = env.DEVELOPER_ALERT_EMAIL;
+    const errorMessage =
+      data.error instanceof Error
+        ? data.error.message
+        : String(data.error || "Unknown server error");
+    const errorStack =
+      data.error instanceof Error && data.error.stack
+        ? data.error.stack
+        : "No stack trace available";
+
+    // Deduplicate / rate-limit identical error alerts within 60 seconds
+    const errorSignature = `${data.method || ""}:${data.path || ""}:${errorMessage}`;
+    const now = Date.now();
+    const lastAlertTime = this.recentErrorAlerts.get(errorSignature) || 0;
+    if (now - lastAlertTime < 60000) {
+      logger.warn(`Throttling error alert email for signature: ${errorSignature}`);
+      return false;
+    }
+    this.recentErrorAlerts.set(errorSignature, now);
+
+    const html = `
+    <!DOCTYPE html>
+    <html>
+      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; background-color: #0F172A; color: #F8FAFC;">
+        <div style="max-width: 680px; margin: 0 auto; background: #1E293B; padding: 28px; border: 1px solid #334155; border-radius: 8px;">
+          <h2 style="color: #EF4444; margin-top: 0; font-size: 20px;">
+            ⚠️ [Server Error Alert] ${data.context || "Unhandled Backend Exception"}
+          </h2>
+          <p style="font-size: 14px; color: #94A3B8;">
+            An issue was captured on the Dainty Dazzle Backend Server (<strong>${env.NODE_ENV}</strong>).
+          </p>
+
+          <table style="width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 13px; color: #CBD5E1;">
+            <tr>
+              <td style="padding: 8px 0; border-bottom: 1px solid #334155; width: 140px; color: #94A3B8;">Method & Path:</td>
+              <td style="padding: 8px 0; border-bottom: 1px solid #334155; font-family: monospace; color: #38BDF8;">
+                ${data.method || "N/A"} ${data.path || "N/A"}
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; border-bottom: 1px solid #334155; color: #94A3B8;">Request ID:</td>
+              <td style="padding: 8px 0; border-bottom: 1px solid #334155; font-family: monospace;">
+                ${data.requestId || "N/A"}
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; border-bottom: 1px solid #334155; color: #94A3B8;">Timestamp:</td>
+              <td style="padding: 8px 0; border-bottom: 1px solid #334155;">
+                ${new Date().toISOString()}
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; border-bottom: 1px solid #334155; color: #94A3B8;">Error Message:</td>
+              <td style="padding: 8px 0; border-bottom: 1px solid #334155; color: #F87171; font-weight: bold;">
+                ${errorMessage}
+              </td>
+            </tr>
+          </table>
+
+          <h4 style="margin: 20px 0 8px; color: #E2E8F0; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Stack Trace:</h4>
+          <pre style="background: #0F172A; padding: 14px; border-radius: 6px; font-family: 'SFMono-Regular', Consolas, Monaco, monospace; font-size: 12px; color: #FCA5A5; overflow-x: auto; white-space: pre-wrap; line-height: 1.5; border: 1px solid #334155;">${errorStack}</pre>
+
+          ${
+            data.metadata
+              ? `
+          <h4 style="margin: 20px 0 8px; color: #E2E8F0; font-size: 13px; text-transform: uppercase;">Metadata:</h4>
+          <pre style="background: #0F172A; padding: 14px; border-radius: 6px; font-family: monospace; font-size: 12px; color: #94A3B8; overflow-x: auto; border: 1px solid #334155;">${JSON.stringify(
+            data.metadata,
+            null,
+            2,
+          )}</pre>`
+              : ""
+          }
+
+          <p style="margin-top: 24px; font-size: 11px; color: #64748B;">
+            Sent automatically to ${devEmail} by Dainty Dazzle Error Monitoring Service.
+          </p>
+        </div>
+      </body>
+    </html>`;
+
+    return this.sendMail({
+      to: devEmail,
+      subject: `🚨 [Server Issue] ${data.method ? `${data.method} ` : ""}${data.path || data.context || "Backend Error"}: ${errorMessage.slice(0, 80)}`,
       html,
     });
   }

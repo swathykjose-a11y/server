@@ -68,9 +68,10 @@ High-performance, scalable TypeScript backend built with **Hono** and **Node.js*
   - `products`: Unique index on `handle`, indexes on `is_active`, `available_for_sale`, and `created_at`.
 - Connection pooling tuned for high concurrency with automatic cleanup on graceful shutdown.
 
-### 5. Resend Email Service
+### 5. Resend Email Service & Error Monitoring
 - **Customer Confirmation**: Sends itemized HTML receipt with order number, estimated delivery (5–7 days), and delivery address.
-- **Admin Dropshipping Alert**: Sends direct notifications to **`bhavartheankit@gmail.com`** with customer delivery address, items ordered, and instructions to order from the supplier website.
+- **Admin Dropshipping Alert**: Sends direct notifications to **`swathykjose@gmail.com`** with customer delivery address, items ordered, and instructions to order from the supplier website.
+- **Developer Error Alerts**: Real-time error alerts dispatched to **`bhavartheankit@gmail.com`** whenever an unhandled 500 error or server issue occurs, with full stack traces and request correlation IDs.
 
 ### 6. PhonePe Payment Gateway
 - Standard Indian checkout supporting UPI, Credit/Debit Cards, and NetBanking.
@@ -102,7 +103,8 @@ Configure your credentials in `.env`:
 - `DATABASE_URL`: Your PostgreSQL connection string.
 - `UPSTASH_REDIS_REST_URL` & `UPSTASH_REDIS_REST_TOKEN`: Upstash Redis REST credentials.
 - `RESEND_API_KEY`: Resend API key.
-- `ADMIN_NOTIFICATION_EMAIL`: `bhavartheankit@gmail.com`
+- `ADMIN_NOTIFICATION_EMAIL`: `swathykjose@gmail.com` (for order dropshipping notifications)
+- `DEVELOPER_ALERT_EMAIL`: `bhavartheankit@gmail.com` (for server error and exception alerts)
 - `PHONEPE_MERCHANT_ID`, `PHONEPE_SALT_KEY`, `PHONEPE_SALT_INDEX`.
 - `SENTRY_DSN`: Optional Sentry DSN for error monitoring.
 

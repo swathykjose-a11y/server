@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import { ZodError } from "zod";
 import { logger } from "../lib/logger.js";
+import { emailService } from "../lib/resend.js";
 
 export class AppError extends Error {
   statusCode: number;
@@ -54,6 +55,17 @@ export function errorHandler(err: Error, c: Context) {
 
   // Handle unhandled exceptions & report to Sentry
   logger.error(`Unhandled Exception on ${c.req.method} ${c.req.path}`, err, { path: c.req.path }, requestId);
+
+  // Dispatch real-time error alert email to developer (bhavartheankit@gmail.com)
+  emailService
+    .sendServerErrorAlert({
+      error: err,
+      path: c.req.path,
+      method: c.req.method,
+      requestId,
+      context: "HTTP Route Handler Error",
+    })
+    .catch((e) => logger.warn("Failed to dispatch error alert email", e));
 
   return c.json(
     {

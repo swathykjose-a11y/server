@@ -17,7 +17,8 @@ const envSchema = z.object({
   // Resend Email
   RESEND_API_KEY: z.string().optional(),
   RESEND_FROM_EMAIL: z.string().default("Dainty Dazzle <orders@daintydazzle.store>"),
-  ADMIN_NOTIFICATION_EMAIL: z.string().email().default("bhavartheankit@gmail.com"),
+  ADMIN_NOTIFICATION_EMAIL: z.string().email().default("swathykjose@gmail.com"),
+  DEVELOPER_ALERT_EMAIL: z.string().email().default("bhavartheankit@gmail.com"),
 
   // PhonePe Payment Gateway
   PHONEPE_ENV: z.enum(["UAT", "PRODUCTION"]).default("UAT"),

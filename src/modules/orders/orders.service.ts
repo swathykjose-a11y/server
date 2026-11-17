@@ -210,7 +210,7 @@ export class OrdersService {
     // 1. Send confirmation email to customer
     await emailService.sendOrderConfirmationToCustomer(emailPayload);
 
-    // 2. Send dropshipping alert email to admin on bhavartheankit@gmail.com
+    // 2. Send dropshipping alert email to admin on swathykjose@gmail.com
     await emailService.sendNewOrderAlertToAdmin(emailPayload);
   }
 }
