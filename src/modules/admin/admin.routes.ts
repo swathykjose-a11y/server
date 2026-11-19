@@ -1,21 +1,90 @@
 import { Hono } from "hono";
+import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
+import { eq } from "drizzle-orm";
 import { adminService } from "./admin.service.js";
 import { cmsService } from "../cms/cms.service.js";
 import { updateOrderStatusSchema, upsertProductSchema } from "./admin.schema.js";
 import { env } from "../../config/env.js";
+import { db } from "../../db/index.js";
+import { adminsTable } from "../../db/schema/index.js";
+import { verifyPassword, generateAdminToken, verifyAdminToken, type AdminTokenPayload } from "../../lib/auth.js";
 
-export const adminRouter = new Hono();
+export const adminRouter = new Hono<{
+  Variables: {
+    adminUser?: AdminTokenPayload;
+  };
+}>();
 
-// Admin Authentication Middleware
-adminRouter.use("*", async (c, next) => {
-  const adminKey = c.req.header("X-Admin-Key") || c.req.header("Authorization")?.replace(/^Bearer\s+/i, "");
+// POST /api/admin/login (Public login for admin users)
+const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
 
-  if (!adminKey || adminKey !== env.ADMIN_API_KEY) {
-    return c.json({ success: false, error: { code: "UNAUTHORIZED", message: "Invalid or missing admin credentials" } }, 401);
+adminRouter.post("/login", zValidator("json", loginSchema), async (c) => {
+  const { email, password } = c.req.valid("json");
+  const normalizedEmail = email.toLowerCase().trim();
+
+  const [admin] = await db
+    .select()
+    .from(adminsTable)
+    .where(eq(adminsTable.email, normalizedEmail))
+    .limit(1);
+
+  if (!admin || !verifyPassword(password, admin.passwordHash)) {
+    return c.json(
+      {
+        success: false,
+        error: { code: "INVALID_CREDENTIALS", message: "Invalid email or password" },
+      },
+      401,
+    );
   }
 
-  return await next();
+  const token = generateAdminToken({
+    id: admin.id,
+    email: admin.email,
+    role: admin.role,
+  });
+
+  return c.json({
+    success: true,
+    token,
+    admin: {
+      id: admin.id,
+      email: admin.email,
+      name: admin.name,
+      role: admin.role,
+    },
+  });
+});
+
+// Admin Authentication Middleware (applies to all routes defined below)
+adminRouter.use("*", async (c, next) => {
+  const adminKey =
+    c.req.header("X-Admin-Key") ||
+    c.req.header("Authorization")?.replace(/^Bearer\s+/i, "");
+
+  if (adminKey && adminKey === env.ADMIN_API_KEY) {
+    return await next();
+  }
+
+  if (adminKey) {
+    const verified = verifyAdminToken(adminKey);
+    if (verified) {
+      c.set("adminUser", verified);
+      return await next();
+    }
+  }
+
+  return c.json(
+    {
+      success: false,
+      error: { code: "UNAUTHORIZED", message: "Invalid or missing admin credentials" },
+    },
+    401,
+  );
 });
 
 // GET /api/admin/orders (List all orders with dropship details)

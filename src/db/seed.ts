@@ -5,7 +5,9 @@ import {
   collectionsTable,
   collectionProductsTable,
   cmsSectionsTable,
+  adminsTable,
 } from "./schema/index.js";
+import { hashPassword } from "../lib/auth.js";
 import { logger } from "../lib/logger.js";
 
 async function seed() {
@@ -292,6 +294,28 @@ async function seed() {
       .onConflictDoUpdate({ target: cmsSectionsTable.id, set: section });
   }
 
+  // 4. Initial Admin Account
+  const defaultAdmin = {
+    email: "ankitbhavarthe123@gmail.com",
+    passwordHash: hashPassword("2003@A"),
+    name: "Ankit Bhavarthe",
+    role: "superadmin",
+  };
+
+  await db
+    .insert(adminsTable)
+    .values(defaultAdmin)
+    .onConflictDoUpdate({
+      target: adminsTable.email,
+      set: {
+        passwordHash: defaultAdmin.passwordHash,
+        name: defaultAdmin.name,
+        role: defaultAdmin.role,
+        updatedAt: new Date(),
+      },
+    });
+
+  logger.info("👤 Admin account seeded: ankitbhavarthe123@gmail.com");
   logger.info("✅ Database seeded successfully!");
 }
 
