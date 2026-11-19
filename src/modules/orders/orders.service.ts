@@ -39,52 +39,48 @@ export class OrdersService {
     const initialStatus = isCod ? "confirmed" : "pending";
     const initialPaymentStatus = isCod ? "pending" : "pending";
 
-    // Insert order in transaction
-    const [createdOrder] = await db.transaction(async (tx) => {
-      const [order] = await tx
-        .insert(ordersTable)
-        .values({
-          id: orderId,
-          orderNumber,
-          customerFirstName: input.customer.firstName,
-          customerLastName: input.customer.lastName,
-          customerEmail: input.customer.email.toLowerCase(),
-          customerPhone: input.customer.phone,
-          addressLine1: input.customer.addressLine1,
-          addressLine2: input.customer.addressLine2,
-          city: input.customer.city,
-          state: input.customer.state,
-          postalCode: input.customer.postalCode,
-          country: input.customer.country,
-          subtotal: input.subtotal.toFixed(2),
-          shippingFee: input.shippingFee.toFixed(2),
-          total: input.total.toFixed(2),
-          currency: "INR",
-          paymentMethod: input.paymentMethod,
-          paymentStatus: initialPaymentStatus,
-          status: initialStatus,
-          idempotencyKey,
-          notes: input.notes,
-        })
-        .returning();
+    // Insert order in database
+    const [createdOrder] = await db
+      .insert(ordersTable)
+      .values({
+        id: orderId,
+        orderNumber,
+        customerFirstName: input.customer.firstName,
+        customerLastName: input.customer.lastName,
+        customerEmail: input.customer.email.toLowerCase(),
+        customerPhone: input.customer.phone,
+        addressLine1: input.customer.addressLine1,
+        addressLine2: input.customer.addressLine2,
+        city: input.customer.city,
+        state: input.customer.state,
+        postalCode: input.customer.postalCode,
+        country: input.customer.country,
+        subtotal: input.subtotal.toFixed(2),
+        shippingFee: input.shippingFee.toFixed(2),
+        total: input.total.toFixed(2),
+        currency: "INR",
+        paymentMethod: input.paymentMethod,
+        paymentStatus: initialPaymentStatus,
+        status: initialStatus,
+        idempotencyKey,
+        notes: input.notes,
+      })
+      .returning();
 
-      for (const item of input.items) {
-        await tx.insert(orderItemsTable).values({
-          id: `item_${crypto.randomUUID()}`,
-          orderId: order.id,
-          productId: item.productId,
-          productTitle: item.productTitle,
-          productHandle: item.productHandle,
-          variantId: item.variantId,
-          variantTitle: item.variantTitle,
-          price: item.price.toFixed(2),
-          quantity: item.quantity,
-          imageUrl: item.imageUrl,
-        });
-      }
-
-      return [order];
-    });
+    for (const item of input.items) {
+      await db.insert(orderItemsTable).values({
+        id: `item_${crypto.randomUUID()}`,
+        orderId: createdOrder.id,
+        productId: item.productId,
+        productTitle: item.productTitle,
+        productHandle: item.productHandle,
+        variantId: item.variantId,
+        variantTitle: item.variantTitle,
+        price: item.price.toFixed(2),
+        quantity: item.quantity,
+        imageUrl: item.imageUrl,
+      });
+    }
 
     logger.info(`Order #${orderNumber} created successfully (${input.paymentMethod})`);
 

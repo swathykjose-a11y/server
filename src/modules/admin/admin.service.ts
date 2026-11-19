@@ -79,41 +79,39 @@ export class AdminService {
       updatedAt: new Date(),
     };
 
-    await db.transaction(async (tx) => {
-      await tx
-        .insert(productsTable)
-        .values(productValues)
-        .onConflictDoUpdate({
-          target: productsTable.id,
-          set: productValues,
-        });
+    await db
+      .insert(productsTable)
+      .values(productValues)
+      .onConflictDoUpdate({
+        target: productsTable.id,
+        set: productValues,
+      });
 
-      // Clear existing variants if updating
-      await tx.delete(productVariantsTable).where(eq(productVariantsTable.productId, productId));
+    // Clear existing variants if updating
+    await db.delete(productVariantsTable).where(eq(productVariantsTable.productId, productId));
 
-      for (const v of input.variants) {
-        await tx.insert(productVariantsTable).values({
-          id: v.id || `var_${crypto.randomUUID()}`,
-          productId,
-          title: v.title,
-          availableForSale: v.availableForSale,
-          quantityAvailable: v.quantityAvailable,
-          price: v.price.toFixed(2),
-          compareAtPrice: v.compareAtPrice ? v.compareAtPrice.toFixed(2) : null,
-          currency: "INR",
-        });
+    for (const v of input.variants) {
+      await db.insert(productVariantsTable).values({
+        id: v.id || `var_${crypto.randomUUID()}`,
+        productId,
+        title: v.title,
+        availableForSale: v.availableForSale,
+        quantityAvailable: v.quantityAvailable,
+        price: v.price.toFixed(2),
+        compareAtPrice: v.compareAtPrice ? v.compareAtPrice.toFixed(2) : null,
+        currency: "INR",
+      });
+    }
+
+    if (input.collectionIds && input.collectionIds.length > 0) {
+      await db.delete(collectionProductsTable).where(eq(collectionProductsTable.productId, productId));
+      for (const colId of input.collectionIds) {
+        await db
+          .insert(collectionProductsTable)
+          .values({ collectionId: colId, productId, sortOrder: 0 })
+          .onConflictDoNothing();
       }
-
-      if (input.collectionIds && input.collectionIds.length > 0) {
-        await tx.delete(collectionProductsTable).where(eq(collectionProductsTable.productId, productId));
-        for (const colId of input.collectionIds) {
-          await tx
-            .insert(collectionProductsTable)
-            .values({ collectionId: colId, productId, sortOrder: 0 })
-            .onConflictDoNothing();
-        }
-      }
-    });
+    }
 
     // Invalidate Redis product cache
     await productsService.invalidateCache(input.handle);

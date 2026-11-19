@@ -3,7 +3,32 @@
   "main": "src/worker.ts",
   "compatibility_date": "2025-02-14",
   "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
   "observability": {
     "enabled": true
+  },
+  "routes": [
+    {
+      "pattern": "api.daintydazzle.store",
+      "custom_domain": true
+    }
+  ],
+  "vars": {
+    "NODE_ENV": "production",
+    "APP_URL": "https://api.daintydazzle.store",
+    "CORS_ORIGIN": "https://daintydazzle.store,https://www.daintydazzle.store,https://admin.daintydazzle.store",
+    "UPSTASH_REDIS_REST_URL": "https://casual-mastiff-244411.upstash.io",
+    "RESEND_FROM_EMAIL": "Dainty Dazzle <orders@daintydazzle.store>",
+    "ADMIN_NOTIFICATION_EMAIL": "swathykjose@gmail.com",
+    "DEVELOPER_ALERT_EMAIL": "bhavartheankit@gmail.com",
+    "CLOUDINARY_CLOUD_NAME": "io2tbyjp",
+    "CLOUDINARY_API_KEY": "335662177137422",
+    "SENTRY_DSN": "https://ae63c127b10e7b29d1228b478c338c41@o4512456859975680.ingest.de.sentry.io/4512456876752976",
+    "SENTRY_ENVIRONMENT": "production",
+    "PHONEPE_ENV": "UAT",
+    "PHONEPE_MERCHANT_ID": "PGTESTPAYUAT",
+    "PHONEPE_SALT_INDEX": "1",
+    "PHONEPE_REDIRECT_URL": "https://daintydazzle.store/checkout/payment-status",
+    "PHONEPE_CALLBACK_URL": "https://api.daintydazzle.store/api/payments/phonepe-webhook"
   }
 }

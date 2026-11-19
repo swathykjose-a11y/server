@@ -1,23 +1,45 @@
-import postgres from "postgres";
-import { drizzle } from "drizzle-orm/postgres-js";
+import { neon } from "@neondatabase/serverless";
+import { drizzle } from "drizzle-orm/neon-http";
 import { env } from "../config/env.js";
 import * as schema from "./schema/index.js";
 import { logger } from "../lib/logger.js";
 
-// Connection pooling configuration for scalability under high traffic
-const client = postgres(env.DATABASE_URL, {
-  max: env.NODE_ENV === "production" ? 25 : 10,
-  idle_timeout: 20,
-  connect_timeout: 10,
-  onnotice: () => {}, // suppress verbose notices in console
-});
+function getCleanDatabaseUrl(): string {
+  const url = process.env.DATABASE_URL || env.DATABASE_URL;
+  return url.replace(/([?&])channel_binding=[^&]*&?/g, "$1").replace(/[?&]$/, "");
+}
 
-export const db = drizzle(client, { schema });
+let _sql: any = null;
+let _db: any = null;
+
+export function getSql(): any {
+  if (!_sql) {
+    _sql = neon(getCleanDatabaseUrl());
+  }
+  return _sql;
+}
+
+export function getDb(): any {
+  if (!_db) {
+    _db = drizzle(getSql(), { schema });
+  }
+  return _db;
+}
+
+// Proxy export for transparent access everywhere in the app
+export const db: ReturnType<typeof drizzle<typeof schema>> = new Proxy({} as any, {
+  get(_target, prop, receiver) {
+    const realDb = getDb();
+    const value = Reflect.get(realDb, prop, receiver);
+    return typeof value === "function" ? value.bind(realDb) : value;
+  },
+});
 
 export async function checkDatabaseHealth(): Promise<boolean> {
   try {
-    const result = await client`SELECT 1 as connected`;
-    return result.length > 0;
+    const sql = getSql();
+    const result = (await sql`SELECT 1 as connected`) as any[];
+    return Boolean(result && result.length > 0);
   } catch (err) {
     logger.error("PostgreSQL database connection check failed", err);
     return false;
@@ -25,10 +47,5 @@ export async function checkDatabaseHealth(): Promise<boolean> {
 }
 
 export async function closeDatabaseConnection(): Promise<void> {
-  try {
-    await client.end({ timeout: 5 });
-    logger.info("PostgreSQL database connection pool closed cleanly.");
-  } catch (err) {
-    logger.error("Error closing PostgreSQL connection pool", err);
-  }
+  logger.info("PostgreSQL stateless connection released cleanly.");
 }
