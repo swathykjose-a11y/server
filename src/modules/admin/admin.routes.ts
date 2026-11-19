@@ -9,6 +9,7 @@ import { env } from "../../config/env.js";
 import { db } from "../../db/index.js";
 import { adminsTable } from "../../db/schema/index.js";
 import { verifyPassword, generateAdminToken, verifyAdminToken, type AdminTokenPayload } from "../../lib/auth.js";
+import { cloudinaryService } from "../../lib/cloudinary.js";
 
 export const adminRouter = new Hono<{
   Variables: {
@@ -125,4 +126,24 @@ adminRouter.post("/cms/:section", async (c) => {
   const body = await c.req.json();
   await cmsService.updateSectionData(section, body);
   return c.json({ success: true, message: `CMS section ${section} updated successfully` });
+});
+
+// POST /api/admin/upload (Upload image to Cloudinary)
+const uploadImageSchema = z.object({
+  file: z.string().min(1),
+  folder: z.string().optional().default("dainty-dazzle"),
+});
+
+adminRouter.post("/upload", zValidator("json", uploadImageSchema), async (c) => {
+  const { file, folder } = c.req.valid("json");
+  const uploadResult = await cloudinaryService.uploadImage(file, folder);
+
+  if (!uploadResult) {
+    return c.json(
+      { success: false, error: { code: "UPLOAD_FAILED", message: "Failed to upload image to Cloudinary" } },
+      500,
+    );
+  }
+
+  return c.json({ success: true, image: uploadResult });
 });

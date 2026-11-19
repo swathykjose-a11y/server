@@ -28,6 +28,12 @@ const envSchema = z.object({
   PHONEPE_REDIRECT_URL: z.string().default("http://localhost:3000/checkout/payment-status"),
   PHONEPE_CALLBACK_URL: z.string().default("http://localhost:8787/api/payments/phonepe-webhook"),
 
+  // Cloudinary Image Storage
+  CLOUDINARY_CLOUD_NAME: z.string().default("io2tbyjp"),
+  CLOUDINARY_API_KEY: z.string().default("335662177137422"),
+  CLOUDINARY_API_SECRET: z.string().default("BKiTUZvUNmjTqCUaYOVR7LLTv48"),
+  CLOUDINARY_URL: z.string().optional(),
+
   // Sentry
   SENTRY_DSN: z.string().optional(),
   SENTRY_ENVIRONMENT: z.string().default("development"),
