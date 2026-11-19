@@ -3,7 +3,7 @@ import { env } from "./env.js";
 
 export function initSentry(): void {
   if (!env.SENTRY_DSN) {
-    console.log("ℹ️ Sentry DSN not configured. Sentry tracking is disabled.");
+    console.log("[INFO] Sentry DSN not configured. Sentry tracking is disabled.");
     return;
   }
 
@@ -14,11 +14,11 @@ export function initSentry(): void {
     debug: env.NODE_ENV === "development",
   });
 
-  console.log("🛡️ Sentry initialized successfully.");
+  console.log("[SENTRY] Sentry initialized successfully.");
 }
 
 export function captureException(error: unknown, context?: Record<string, unknown>): void {
-  console.error("🚨 Error captured:", error, context);
+  console.error("[ERROR] Error captured:", error, context);
   if (env.SENTRY_DSN) {
     Sentry.withScope((scope) => {
       if (context) {

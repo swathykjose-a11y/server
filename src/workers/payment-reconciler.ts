@@ -19,7 +19,7 @@ export class PaymentReconcilerWorker {
     if (this.isRunning) return;
     this.isRunning = true;
 
-    logger.info(`🔄 [DB Polling Worker] Payment Reconciler started (${WORKER_ID}, interval: ${intervalMs / 1000}s)`);
+    logger.info(`[WORKER] Payment Reconciler started (${WORKER_ID}, interval: ${intervalMs / 1000}s)`);
 
     // Initial run after brief delay
     setTimeout(() => this.poll(), 5000);
@@ -38,7 +38,7 @@ export class PaymentReconcilerWorker {
       this.intervalTimer = null;
     }
 
-    logger.info(`🛑 [DB Polling Worker] Payment Reconciler stopped gracefully (${WORKER_ID})`);
+    logger.info(`[WORKER] Payment Reconciler stopped gracefully (${WORKER_ID})`);
   }
 
   private async poll(): Promise<void> {

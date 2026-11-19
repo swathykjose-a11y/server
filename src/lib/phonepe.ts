@@ -50,7 +50,7 @@ class PhonePeService {
         ? "https://api.phonepe.com/apis/hermes"
         : "https://api-preprod.phonepe.com/apis/pg-sandbox";
 
-    logger.info(`💳 PhonePe client configured for [${env.PHONEPE_ENV}] environment`);
+    logger.info(`[PHONEPE] PhonePe client configured for [${env.PHONEPE_ENV}] environment`);
   }
 
   /**

@@ -4,7 +4,7 @@ High-performance, scalable TypeScript backend built with **Hono** and **Node.js*
 
 ---
 
-## 🏛️ System Architecture
+##  System Architecture
 
 ```
                        [ Client / Next.js ]
@@ -40,7 +40,7 @@ High-performance, scalable TypeScript backend built with **Hono** and **Node.js*
 
 ---
 
-## ⚡ Core Features
+##  Core Features
 
 ### 1. High-Traffic Scalability with Upstash Redis
 - **Cache-Aside Pattern**: Products, collections, and CMS banners are cached in Redis with TTL and invalidated on updates.
@@ -84,7 +84,7 @@ High-performance, scalable TypeScript backend built with **Hono** and **Node.js*
 
 ---
 
-## 🚀 Getting Started
+##  Getting Started
 
 ### 1. Prerequisites
 - Node.js v20+ or v22+
@@ -133,7 +133,7 @@ The server will start on `http://localhost:8787`.
 
 ---
 
-## 📡 API Endpoints Reference
+##  API Endpoints Reference
 
 ### Public API
 | Method | Endpoint | Description |

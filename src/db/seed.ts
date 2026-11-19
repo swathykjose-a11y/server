@@ -11,7 +11,7 @@ import { hashPassword } from "../lib/auth.js";
 import { logger } from "../lib/logger.js";
 
 async function seed() {
-  logger.info("🌱 Seeding database with initial catalog...");
+  logger.info("[DB] Seeding database with initial catalog...");
 
   // 1. Collections
   const collections = [
@@ -315,11 +315,11 @@ async function seed() {
       },
     });
 
-  logger.info("👤 Admin account seeded: ankitbhavarthe123@gmail.com");
-  logger.info("✅ Database seeded successfully!");
+  logger.info("[ADMIN] Admin account seeded: ankitbhavarthe123@gmail.com");
+  logger.info("[DB] Database seeded successfully!");
 }
 
 seed().catch((err) => {
-  logger.error("❌ Seeding failed", err);
+  logger.error("[DB ERROR] Seeding failed", err);
   process.exit(1);
 });

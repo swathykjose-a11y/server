@@ -5,16 +5,16 @@ import { env } from "../config/env.js";
 import { logger } from "../lib/logger.js";
 
 async function runMigrations() {
-  logger.info("⏳ Running database migrations...");
+  logger.info("[DB] Running database migrations...");
 
   const migrationClient = postgres(env.DATABASE_URL, { max: 1 });
   const db = drizzle(migrationClient);
 
   try {
     await migrate(db, { migrationsFolder: "./drizzle" });
-    logger.info("✅ Database migrations applied successfully!");
+    logger.info("[DB] Database migrations applied successfully!");
   } catch (err) {
-    logger.error("❌ Migration failed", err);
+    logger.error("[DB ERROR] Migration failed", err);
     process.exit(1);
   } finally {
     await migrationClient.end();

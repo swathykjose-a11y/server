@@ -48,9 +48,9 @@ class EmailService {
   constructor() {
     if (env.RESEND_API_KEY) {
       this.resend = new Resend(env.RESEND_API_KEY);
-      logger.info("📧 Resend Email client initialized");
+      logger.info("[EMAIL] Resend Email client initialized");
     } else {
-      logger.warn("⚠️ RESEND_API_KEY not configured. Outgoing emails will be logged only.");
+      logger.warn("[EMAIL WARNING] RESEND_API_KEY not configured. Outgoing emails will be logged only.");
     }
   }
 
@@ -186,12 +186,12 @@ class EmailService {
     <html>
       <body style="font-family: -apple-system, sans-serif; padding: 20px; background-color: #F8F9FA; color: #212529;">
         <div style="max-width: 640px; margin: 0 auto; background: #FFFFFF; padding: 28px; border: 1px solid #DEE2E6; border-radius: 6px;">
-          <h2 style="color: #0D6EFD; margin-top: 0;">🚀 New Customer Order: #${data.orderNumber}</h2>
+          <h2 style="color: #0D6EFD; margin-top: 0;">[New Order] Customer Order: #${data.orderNumber}</h2>
           <p style="font-size: 14px; background: #FFF3CD; padding: 12px; border-left: 4px solid #FFC107; border-radius: 2px;">
             <strong>Dropshipping Action Required:</strong> A customer just bought this on Dainty Dazzle. Please order the products from your supplier and enter the customer's delivery address below.
           </p>
 
-          <h3>📦 Ordered Items:</h3>
+          <h3>Ordered Items:</h3>
           <ul style="font-size: 14px; line-height: 1.8;">
             ${itemsSummary}
           </ul>
@@ -200,7 +200,7 @@ class EmailService {
 
           <hr style="border: none; border-top: 1px solid #DEE2E6; margin: 20px 0;">
 
-          <h3>📍 Customer Shipping Address (Copy to Supplier):</h3>
+          <h3>Customer Shipping Address (Copy to Supplier):</h3>
           <div style="background: #F1F3F5; padding: 16px; border-radius: 4px; font-family: monospace; font-size: 13px; line-height: 1.6;">
             Name: ${data.customerName}<br>
             Phone: ${data.customerPhone}<br>
@@ -224,7 +224,7 @@ class EmailService {
 
     return this.sendMail({
       to: adminEmail,
-      subject: `🚨 [Dropship Alert] New Order #${data.orderNumber} placed by ${data.customerName} (₹${data.total.toFixed(0)})`,
+      subject: `[Dropship Alert] New Order #${data.orderNumber} placed by ${data.customerName} (₹${data.total.toFixed(0)})`,
       html,
     });
   }
@@ -260,7 +260,7 @@ class EmailService {
       <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; background-color: #0F172A; color: #F8FAFC;">
         <div style="max-width: 680px; margin: 0 auto; background: #1E293B; padding: 28px; border: 1px solid #334155; border-radius: 8px;">
           <h2 style="color: #EF4444; margin-top: 0; font-size: 20px;">
-            ⚠️ [Server Error Alert] ${data.context || "Unhandled Backend Exception"}
+            [Server Error Alert] ${data.context || "Unhandled Backend Exception"}
           </h2>
           <p style="font-size: 14px; color: #94A3B8;">
             An issue was captured on the Dainty Dazzle Backend Server (<strong>${env.NODE_ENV}</strong>).
@@ -317,7 +317,7 @@ class EmailService {
 
     return this.sendMail({
       to: devEmail,
-      subject: `🚨 [Server Issue] ${data.method ? `${data.method} ` : ""}${data.path || data.context || "Backend Error"}: ${errorMessage.slice(0, 80)}`,
+      subject: `[Server Issue] ${data.method ? `${data.method} ` : ""}${data.path || data.context || "Backend Error"}: ${errorMessage.slice(0, 80)}`,
       html,
     });
   }

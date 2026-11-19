@@ -20,10 +20,10 @@ const server = serve(
     port: env.PORT,
   },
   (info) => {
-    logger.info(`✨ Dainty Dazzle Backend Server listening on http://localhost:${info.port} (${env.NODE_ENV})`);
-    logger.info(`🌐 Allowed CORS Origins: ${env.CORS_ORIGIN}`);
-    logger.info(`📬 Admin order notifications routing to: ${env.ADMIN_NOTIFICATION_EMAIL}`);
-    logger.info(`🚨 Developer server error alerts routing to: ${env.DEVELOPER_ALERT_EMAIL}`);
+    logger.info(`[SERVER] Dainty Dazzle Backend Server listening on http://localhost:${info.port} (${env.NODE_ENV})`);
+    logger.info(`[CORS] Allowed CORS Origins: ${env.CORS_ORIGIN}`);
+    logger.info(`[ADMIN] Admin order notifications routing to: ${env.ADMIN_NOTIFICATION_EMAIL}`);
+    logger.info(`[ALERTS] Developer server error alerts routing to: ${env.DEVELOPER_ALERT_EMAIL}`);
   },
 );
 
@@ -58,7 +58,7 @@ async function handleGracefulShutdown(signal: string) {
   if (isShuttingDown) return;
   isShuttingDown = true;
 
-  logger.info(`🛑 Received ${signal}. Starting graceful shutdown...`);
+  logger.info(`[SHUTDOWN] Received ${signal}. Starting graceful shutdown...`);
 
   // Stop background worker first
   paymentReconciler.stop();
@@ -70,13 +70,13 @@ async function handleGracefulShutdown(signal: string) {
     // Close database connection pool
     await closeDatabaseConnection();
 
-    logger.info("👋 Graceful shutdown complete. Exiting process.");
+    logger.info("[SHUTDOWN] Graceful shutdown complete. Exiting process.");
     process.exit(0);
   });
 
   // Force close if graceful shutdown hangs
   setTimeout(() => {
-    logger.error("⚠️ Forcefully terminating process due to shutdown timeout.");
+    logger.error("[TIMEOUT] Forcefully terminating process due to shutdown timeout.");
     process.exit(1);
   }, 10000);
 }

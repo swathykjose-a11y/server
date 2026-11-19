@@ -67,10 +67,10 @@ export class DistributedCacheService {
         url: env.UPSTASH_REDIS_REST_URL,
         token: env.UPSTASH_REDIS_REST_TOKEN,
       });
-      logger.info("⚡ Upstash Redis client initialized");
+      logger.info("[REDIS] Upstash Redis client initialized");
     } else {
       this.memoryFallback = new MemoryCacheFallback();
-      logger.warn("⚠️ UPSTASH_REDIS_REST_URL not configured. Using in-memory fallback cache.");
+      logger.warn("[REDIS WARNING] UPSTASH_REDIS_REST_URL not configured. Using in-memory fallback cache.");
     }
   }
 
