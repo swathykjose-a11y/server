@@ -20,18 +20,62 @@ export function createApp(): Hono {
   const app = new Hono();
 
   // 1. Global Middlewares
-  const allowedOrigins = env.CORS_ORIGIN.split(",").map((s) => s.trim());
+  const configuredOrigins = env.CORS_ORIGIN.split(",")
+    .map((s) => s.trim().replace(/\/+$/, "").toLowerCase())
+    .filter(Boolean);
+
+  const defaultOrigins = [
+    "https://daintydazzle.store",
+    "https://www.daintydazzle.store",
+    "https://admin.daintydazzle.store",
+    "https://api.daintydazzle.store",
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://localhost:3002",
+    "http://localhost:8787",
+  ].map((s) => s.toLowerCase());
+
+  const allowedOriginsSet = new Set([...defaultOrigins, ...configuredOrigins]);
+
   app.use(
     "*",
     cors({
       origin: (origin) => {
-        if (!origin) return allowedOrigins[0];
-        return allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
+        if (!origin) return Array.from(allowedOriginsSet)[0];
+        const normalized = origin.trim().replace(/\/+$/, "").toLowerCase();
+        if (allowedOriginsSet.has(normalized)) {
+          return origin;
+        }
+        // Also allow any local dev origins (e.g. localhost or 127.0.0.1 on any port)
+        if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(normalized)) {
+          return origin;
+        }
+        return null;
       },
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-      allowHeaders: ["Content-Type", "Authorization", "X-Request-Id", "Idempotency-Key", "X-Admin-Key", "X-VERIFY", "X-MERCHANT-ID"],
-      exposeHeaders: ["X-Request-Id", "X-Idempotency-Replay", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"],
+      allowHeaders: [
+        "Content-Type",
+        "Authorization",
+        "X-Request-Id",
+        "Idempotency-Key",
+        "X-Admin-Key",
+        "X-VERIFY",
+        "X-MERCHANT-ID",
+        "Accept",
+        "Origin",
+        "Cache-Control",
+        "Pragma",
+        "X-Requested-With",
+      ],
+      exposeHeaders: [
+        "X-Request-Id",
+        "X-Idempotency-Replay",
+        "X-RateLimit-Limit",
+        "X-RateLimit-Remaining",
+        "X-RateLimit-Reset",
+      ],
       credentials: true,
+      maxAge: 86400,
     }),
   );
 

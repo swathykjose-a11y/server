@@ -4,8 +4,8 @@ import { z } from "zod";
 const envSchema = z.object({
   PORT: z.coerce.number().default(8787),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
-  APP_URL: z.string().default("http://localhost:8787"),
-  CORS_ORIGIN: z.string().default("http://localhost:3000"),
+  APP_URL: z.string().default("https://api.daintydazzle.store"),
+  CORS_ORIGIN: z.string().default("https://daintydazzle.store,https://www.daintydazzle.store,https://admin.daintydazzle.store,http://localhost:3000,http://localhost:3001"),
 
   // PostgreSQL
   DATABASE_URL: z.string().default("postgresql://postgres:postgres@localhost:5432/dainty_dazzle"),
@@ -25,8 +25,8 @@ const envSchema = z.object({
   PHONEPE_MERCHANT_ID: z.string().default("PGTESTPAYUAT"),
   PHONEPE_SALT_KEY: z.string().default("96434309-7796-489d-8924-ab56988a6076"),
   PHONEPE_SALT_INDEX: z.coerce.number().default(1),
-  PHONEPE_REDIRECT_URL: z.string().default("http://localhost:3000/checkout/payment-status"),
-  PHONEPE_CALLBACK_URL: z.string().default("http://localhost:8787/api/payments/phonepe-webhook"),
+  PHONEPE_REDIRECT_URL: z.string().default("https://daintydazzle.store/checkout/payment-status"),
+  PHONEPE_CALLBACK_URL: z.string().default("https://api.daintydazzle.store/api/payments/phonepe-webhook"),
 
   // Cloudinary Image Storage
   CLOUDINARY_CLOUD_NAME: z.string().default("io2tbyjp"),
