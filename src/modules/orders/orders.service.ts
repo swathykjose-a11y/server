@@ -1,11 +1,13 @@
 import crypto from "crypto";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { db } from "../../db/index.js";
-import { ordersTable, orderItemsTable } from "../../db/schema/index.js";
+import { ordersTable, orderItemsTable, productsTable, productVariantsTable } from "../../db/schema/index.js";
 import { CreateOrderInput } from "./orders.schema.js";
 import { emailService } from "../../lib/resend.js";
 import { logger } from "../../lib/logger.js";
 import { AppError } from "../../middlewares/error-handler.js";
+import { orderViewToken } from "../../lib/auth.js";
+import { FREE_SHIPPING_MIN_INR, SHIPPING_FEE_INR, STORE_UPI, buildUpiUri } from "../../config/store-payment.js";
 
 export class OrdersService {
   /**
@@ -13,11 +15,15 @@ export class OrdersService {
    */
   private generateOrderNumber(): string {
     const timestamp = Date.now().toString().slice(-5);
-    const random = Math.floor(1000 + Math.random() * 9000);
+    const random = crypto.randomInt(1000, 10000);
     return `DD-${timestamp}-${random}`;
   }
 
   async createOrder(input: CreateOrderInput, idempotencyKey?: string) {
+    if (input.paymentMethod !== "upi") {
+      throw new AppError("Cash on delivery is not available. Pay by UPI.", 400, "COD_NOT_AVAILABLE");
+    }
+
     const orderId = `ord_${crypto.randomUUID()}`;
     const orderNumber = this.generateOrderNumber();
 
@@ -31,15 +37,13 @@ export class OrdersService {
 
       if (existing) {
         logger.info(`Existing order found for idempotency key ${idempotencyKey}: ${existing.orderNumber}`);
-        return this.getOrderById(existing.id);
+        const existingOrder = await this.getOrderById(existing.id);
+        return this.checkoutResult(existingOrder);
       }
     }
 
-    const isCod = input.paymentMethod === "cod";
-    const initialStatus = isCod ? "confirmed" : "pending";
-    const initialPaymentStatus = isCod ? "pending" : "pending";
+    const priced = await this.priceFromCatalog(input.items);
 
-    // Insert order in database
     const [createdOrder] = await db
       .insert(ordersTable)
       .values({
@@ -55,19 +59,19 @@ export class OrdersService {
         state: input.customer.state,
         postalCode: input.customer.postalCode,
         country: input.customer.country,
-        subtotal: input.subtotal.toFixed(2),
-        shippingFee: input.shippingFee.toFixed(2),
-        total: input.total.toFixed(2),
+        subtotal: priced.subtotal.toFixed(2),
+        shippingFee: priced.shippingFee.toFixed(2),
+        total: priced.total.toFixed(2),
         currency: "INR",
-        paymentMethod: input.paymentMethod,
-        paymentStatus: initialPaymentStatus,
-        status: initialStatus,
+        paymentMethod: "upi",
+        paymentStatus: "pending",
+        status: "pending",
         idempotencyKey,
         notes: input.notes,
       })
       .returning();
 
-    for (const item of input.items) {
+    for (const item of priced.lines) {
       await db.insert(orderItemsTable).values({
         id: `item_${crypto.randomUUID()}`,
         orderId: createdOrder.id,
@@ -82,16 +86,86 @@ export class OrdersService {
       });
     }
 
-    logger.info(`Order #${orderNumber} created successfully (${input.paymentMethod})`);
+    logger.info(`Order #${orderNumber} created for UPI payment of ₹${priced.total.toFixed(0)}`);
 
-    // If COD, dispatch emails immediately
-    if (isCod) {
-      this.dispatchOrderEmails(createdOrder.id).catch((err) => {
-        logger.error(`Failed to dispatch emails for order #${orderNumber}`, err);
-      });
+    this.dispatchOrderEmails(createdOrder.id).catch((err) => {
+      logger.error(`Failed to dispatch emails for order #${orderNumber}`, err);
+    });
+
+    const order = await this.getOrderById(createdOrder.id);
+    return this.checkoutResult(order);
+  }
+
+  private async priceFromCatalog(items: CreateOrderInput["items"]) {
+    const quantities = new Map<string, number>();
+    for (const item of items) {
+      quantities.set(item.variantId, (quantities.get(item.variantId) || 0) + item.quantity);
     }
 
-    return this.getOrderById(createdOrder.id);
+    const variantIds = [...quantities.keys()];
+    const rows = await db
+      .select({
+        variant: productVariantsTable,
+        product: productsTable,
+      })
+      .from(productVariantsTable)
+      .innerJoin(productsTable, eq(productVariantsTable.productId, productsTable.id))
+      .where(inArray(productVariantsTable.id, variantIds));
+
+    if (rows.length !== variantIds.length) {
+      throw new AppError("One or more products are no longer available", 400, "PRODUCT_UNAVAILABLE");
+    }
+
+    const lines = rows.map((row) => {
+      const quantity = quantities.get(row.variant.id) || 0;
+      if (!row.product.isActive || !row.product.availableForSale || !row.variant.availableForSale) {
+        throw new AppError(`${row.product.title} is not available`, 400, "PRODUCT_UNAVAILABLE");
+      }
+      if (row.variant.quantityAvailable != null && row.variant.quantityAvailable < quantity) {
+        throw new AppError(`Not enough stock for ${row.product.title}`, 400, "INSUFFICIENT_STOCK");
+      }
+      const price = Number(row.variant.price);
+      if (!Number.isFinite(price) || price <= 0) {
+        throw new AppError(`${row.product.title} has no price`, 400, "PRODUCT_UNAVAILABLE");
+      }
+      const imageUrl = row.product.images?.[0]?.url;
+      return {
+        productId: row.product.id,
+        productTitle: row.product.title,
+        productHandle: row.product.handle,
+        variantId: row.variant.id,
+        variantTitle: row.variant.title,
+        price,
+        quantity,
+        imageUrl,
+      };
+    });
+
+    const subtotal = lines.reduce((sum, line) => sum + line.price * line.quantity, 0);
+    const shippingFee = subtotal >= FREE_SHIPPING_MIN_INR ? 0 : SHIPPING_FEE_INR;
+    return { lines, subtotal, shippingFee, total: subtotal + shippingFee };
+  }
+
+  private checkoutResult(order: Awaited<ReturnType<OrdersService["getOrderById"]>>) {
+    const note = `Dainty Dazzle ${order.orderNumber}`;
+    return {
+      order: this.toCustomerOrder(order),
+      viewToken: orderViewToken(order.id),
+      payment: {
+        payeeName: STORE_UPI.payeeName,
+        vpa: STORE_UPI.vpa,
+        phone: STORE_UPI.phone,
+        amount: order.total,
+        currency: "INR",
+        note,
+        upiUri: buildUpiUri(order.total, note),
+      },
+    };
+  }
+
+  toCustomerOrder(order: Awaited<ReturnType<OrdersService["getOrderById"]>>) {
+    const { supplierTracking: _supplierTracking, ...customerOrder } = order;
+    return customerOrder;
   }
 
   async getOrderById(orderId: string) {
