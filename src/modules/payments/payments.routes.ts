@@ -1,22 +1,30 @@
 import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
 import { paymentsService } from "./payments.service.js";
-import { initiatePaymentSchema } from "./payments.schema.js";
-import { idempotencyMiddleware } from "../../middlewares/idempotency.js";
+import { env } from "../../config/env.js";
+import { safeEqual, verifyAdminToken } from "../../lib/auth.js";
 
 export const paymentsRouter = new Hono();
 
-// POST /api/payments/initiate (Initiate PhonePe payment with idempotency)
-paymentsRouter.post(
-  "/initiate",
-  idempotencyMiddleware(),
-  zValidator("json", initiatePaymentSchema),
-  async (c) => {
-    const { orderId } = c.req.valid("json");
-    const result = await paymentsService.initiatePhonePePayment(orderId);
-    return c.json(result);
-  },
-);
+function isAdminRequest(c: { req: { header: (name: string) => string | undefined } }): boolean {
+  const adminKey = c.req.header("X-Admin-Key") || c.req.header("Authorization")?.replace(/^Bearer\s+/i, "");
+  if (!adminKey) return false;
+  if (safeEqual(adminKey, env.ADMIN_API_KEY)) return true;
+  return verifyAdminToken(adminKey) !== null;
+}
+
+// Storefront checkout is personal UPI only. PhonePe initiation is not a public checkout path.
+paymentsRouter.post("/initiate", async (c) => {
+  return c.json(
+    {
+      success: false,
+      error: {
+        code: "UPI_ONLY",
+        message: "This store accepts UPI only. Cash on delivery and the payment gateway are not available.",
+      },
+    },
+    410,
+  );
+});
 
 // POST /api/payments/phonepe-webhook (PhonePe server-to-server callback)
 paymentsRouter.post("/phonepe-webhook", async (c) => {
@@ -35,12 +43,25 @@ paymentsRouter.post("/phonepe-webhook", async (c) => {
     base64Response = await c.req.text();
   }
 
+  if (base64Response.length > 20_000) {
+    return c.json(
+      { success: false, error: { code: "PAYLOAD_TOO_LARGE", message: "Webhook payload is too large" } },
+      413,
+    );
+  }
+
   const result = await paymentsService.handlePhonePeWebhook(base64Response, xVerify);
   return c.json(result);
 });
 
-// GET /api/payments/status/:transactionId (Reconcile status directly from PhonePe)
+// GET /api/payments/status/:transactionId (admin reconcile only)
 paymentsRouter.get("/status/:transactionId", async (c) => {
+  if (!isAdminRequest(c)) {
+    return c.json(
+      { success: false, error: { code: "UNAUTHORIZED", message: "Invalid or missing admin credentials" } },
+      401,
+    );
+  }
   const transactionId = c.req.param("transactionId");
   const result = await paymentsService.checkStatusAndReconcile(transactionId);
   return c.json(result);
