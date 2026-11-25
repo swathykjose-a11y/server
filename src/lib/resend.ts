@@ -1,6 +1,16 @@
 import { Resend } from "resend";
 import { env } from "../config/env.js";
 import { logger } from "./logger.js";
+import { STORE_UPI } from "../config/store-payment.js";
+
+function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 
 interface EmailOrderItem {
   title: string;
@@ -63,18 +73,22 @@ class EmailService {
         (item) => `
         <tr style="border-bottom: 1px solid #EAE7E2;">
           <td style="padding: 12px 8px; font-size: 13px; color: #232220;">
-            <strong>${item.title}</strong>
-            ${item.variantTitle ? `<br><span style="font-size: 11px; color: #737871;">${item.variantTitle}</span>` : ""}
+            <strong>${escapeHtml(item.title)}</strong>
+            ${item.variantTitle ? `<br><span style="font-size: 11px; color: #737871;">${escapeHtml(item.variantTitle)}</span>` : ""}
           </td>
-          <td style="padding: 12px 8px; font-size: 13px; text-align: center; color: #232220;">${item.quantity}</td>
+          <td style="padding: 12px 8px; font-size: 13px; text-align: center; color: #232220;">${escapeHtml(item.quantity)}</td>
           <td style="padding: 12px 8px; font-size: 13px; text-align: right; color: #232220;">₹${(item.price * item.quantity).toFixed(0)}</td>
         </tr>`,
       )
       .join("");
 
-    const fullAddress = `${data.shippingAddress.addressLine1}${
-      data.shippingAddress.addressLine2 ? `, ${data.shippingAddress.addressLine2}` : ""
-    }, ${data.shippingAddress.city}, ${data.shippingAddress.state} - ${data.shippingAddress.postalCode}`;
+    const fullAddress = escapeHtml(
+      `${data.shippingAddress.addressLine1}${
+        data.shippingAddress.addressLine2 ? `, ${data.shippingAddress.addressLine2}` : ""
+      }, ${data.shippingAddress.city}, ${data.shippingAddress.state} - ${data.shippingAddress.postalCode}`,
+    );
+    const awaitingUpi = data.paymentStatus !== "paid";
+    const customerName = escapeHtml(data.customerName);
 
     const html = `
     <!DOCTYPE html>
@@ -101,10 +115,14 @@ class EmailService {
             <p>Everyday Fine Jewelry</p>
           </div>
           <div class="content">
-            <span class="badge">Order Confirmed</span>
-            <h2 style="font-family: Georgia, serif; font-size: 20px; color: #232220; margin: 16px 0 8px;">Thank you for your order, ${data.customerName}!</h2>
+            <span class="badge">${awaitingUpi ? "Payment required" : "Order Confirmed"}</span>
+            <h2 style="font-family: Georgia, serif; font-size: 20px; color: #232220; margin: 16px 0 8px;">Thank you for your order, ${customerName}!</h2>
             <p style="font-size: 13px; color: #5B6258; line-height: 1.6;">
-              We have received your order <strong>#${data.orderNumber}</strong>. Each piece is handcrafted with care. You will receive a separate shipping notification with a tracking number once your package is dispatched.
+              ${
+                awaitingUpi
+                  ? `Pay <strong>₹${data.total.toFixed(0)}</strong> by UPI to <strong>${escapeHtml(STORE_UPI.payeeName)}</strong> (${escapeHtml(STORE_UPI.vpa)}, phone ${escapeHtml(STORE_UPI.phone)}) and use note <strong>#${escapeHtml(data.orderNumber)}</strong>. There is no cash on delivery. We dispatch the order after this payment is received.`
+                  : `We have received your order <strong>#${escapeHtml(data.orderNumber)}</strong>. Each piece is handcrafted with care. You will receive a separate shipping notification with a tracking number once your package is dispatched.`
+              }
             </p>
 
             <table class="summary-table">
@@ -138,10 +156,10 @@ class EmailService {
             <div style="margin-top: 24px; padding: 16px; border: 1px solid #EAE7E2; border-radius: 4px;">
               <h3 style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: #232220; margin: 0 0 8px;">Delivery Details</h3>
               <p style="font-size: 13px; color: #5B6258; margin: 0; line-height: 1.5;">
-                <strong>${data.customerName}</strong><br>
+                <strong>${customerName}</strong><br>
                 ${fullAddress}<br>
-                Phone: ${data.customerPhone}<br>
-                Payment: <strong style="text-transform: uppercase;">${data.paymentMethod}</strong> (${data.paymentStatus})
+                Phone: ${escapeHtml(data.customerPhone)}<br>
+                Payment: <strong style="text-transform: uppercase;">${escapeHtml(data.paymentMethod)}</strong> (${escapeHtml(data.paymentStatus)})
               </p>
             </div>
           </div>
@@ -155,7 +173,7 @@ class EmailService {
 
     return this.sendMail({
       to: data.customerEmail,
-      subject: `Order Confirmed: #${data.orderNumber} - Dainty Dazzle`,
+      subject: `${awaitingUpi ? "Pay by UPI" : "Order Confirmed"}: #${data.orderNumber} - Dainty Dazzle`,
       html,
     });
   }
@@ -171,24 +189,32 @@ class EmailService {
       .map(
         (item) => `
         <li>
-          <strong>${item.quantity}x ${item.title}</strong>
-          ${item.variantTitle ? `(${item.variantTitle})` : ""} - ₹${(item.price * item.quantity).toFixed(0)}
+          <strong>${escapeHtml(item.quantity)}x ${escapeHtml(item.title)}</strong>
+          ${item.variantTitle ? `(${escapeHtml(item.variantTitle)})` : ""} - ₹${(item.price * item.quantity).toFixed(0)}
         </li>`,
       )
       .join("");
 
-    const fullAddress = `${data.shippingAddress.addressLine1}${
-      data.shippingAddress.addressLine2 ? `, ${data.shippingAddress.addressLine2}` : ""
-    }, ${data.shippingAddress.city}, ${data.shippingAddress.state} - ${data.shippingAddress.postalCode}, ${data.shippingAddress.country}`;
+    const fullAddress = escapeHtml(
+      `${data.shippingAddress.addressLine1}${
+        data.shippingAddress.addressLine2 ? `, ${data.shippingAddress.addressLine2}` : ""
+      }, ${data.shippingAddress.city}, ${data.shippingAddress.state} - ${data.shippingAddress.postalCode}, ${data.shippingAddress.country}`,
+    );
+    const customerName = escapeHtml(data.customerName);
+    const awaitingUpi = data.paymentStatus !== "paid";
 
     const html = `
     <!DOCTYPE html>
     <html>
       <body style="font-family: -apple-system, sans-serif; padding: 20px; background-color: #F8F9FA; color: #212529;">
         <div style="max-width: 640px; margin: 0 auto; background: #FFFFFF; padding: 28px; border: 1px solid #DEE2E6; border-radius: 6px;">
-          <h2 style="color: #0D6EFD; margin-top: 0;">[New Order] Customer Order: #${data.orderNumber}</h2>
+          <h2 style="color: #0D6EFD; margin-top: 0;">[New Order] Customer Order: #${escapeHtml(data.orderNumber)}</h2>
           <p style="font-size: 14px; background: #FFF3CD; padding: 12px; border-left: 4px solid #FFC107; border-radius: 2px;">
-            <strong>Dropshipping Action Required:</strong> A customer just bought this on Dainty Dazzle. Please order the products from your supplier and enter the customer's delivery address below.
+            ${
+              awaitingUpi
+                ? `<strong>UPI payment pending.</strong> Do not order from the supplier until ₹${data.total.toFixed(0)} arrives on ${escapeHtml(STORE_UPI.vpa)} (${escapeHtml(STORE_UPI.phone)}) with note #${escapeHtml(data.orderNumber)}. Cash on delivery is not offered.`
+                : `<strong>Dropshipping action required:</strong> Payment is received. Order the products from your supplier and use the customer's delivery address below.`
+            }
           </p>
 
           <h3>Ordered Items:</h3>
@@ -196,23 +222,23 @@ class EmailService {
             ${itemsSummary}
           </ul>
 
-          <p><strong>Customer Paid Total:</strong> ₹${data.total.toFixed(0)} (${data.paymentMethod.toUpperCase()} - ${data.paymentStatus})</p>
+          <p><strong>Order total:</strong> ₹${data.total.toFixed(0)} (${escapeHtml(data.paymentMethod.toUpperCase())} - ${escapeHtml(data.paymentStatus)})</p>
 
           <hr style="border: none; border-top: 1px solid #DEE2E6; margin: 20px 0;">
 
           <h3>Customer Shipping Address (Copy to Supplier):</h3>
           <div style="background: #F1F3F5; padding: 16px; border-radius: 4px; font-family: monospace; font-size: 13px; line-height: 1.6;">
-            Name: ${data.customerName}<br>
-            Phone: ${data.customerPhone}<br>
-            Email: ${data.customerEmail}<br>
-            Address Line 1: ${data.shippingAddress.addressLine1}<br>
-            Address Line 2: ${data.shippingAddress.addressLine2 || "N/A"}<br>
-            City: ${data.shippingAddress.city}<br>
-            State: ${data.shippingAddress.state}<br>
-            PIN Code: ${data.shippingAddress.postalCode}<br>
-            Country: ${data.shippingAddress.country}<br><br>
+            Name: ${customerName}<br>
+            Phone: ${escapeHtml(data.customerPhone)}<br>
+            Email: ${escapeHtml(data.customerEmail)}<br>
+            Address Line 1: ${escapeHtml(data.shippingAddress.addressLine1)}<br>
+            Address Line 2: ${escapeHtml(data.shippingAddress.addressLine2 || "N/A")}<br>
+            City: ${escapeHtml(data.shippingAddress.city)}<br>
+            State: ${escapeHtml(data.shippingAddress.state)}<br>
+            PIN Code: ${escapeHtml(data.shippingAddress.postalCode)}<br>
+            Country: ${escapeHtml(data.shippingAddress.country)}<br><br>
             Full Address Line:<br>
-            ${data.customerName}, ${fullAddress}, Phone: ${data.customerPhone}
+            ${customerName}, ${fullAddress}, Phone: ${escapeHtml(data.customerPhone)}
           </div>
 
           <p style="margin-top: 24px; font-size: 12px; color: #6C757D;">
@@ -260,7 +286,7 @@ class EmailService {
       <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; background-color: #0F172A; color: #F8FAFC;">
         <div style="max-width: 680px; margin: 0 auto; background: #1E293B; padding: 28px; border: 1px solid #334155; border-radius: 8px;">
           <h2 style="color: #EF4444; margin-top: 0; font-size: 20px;">
-            [Server Error Alert] ${data.context || "Unhandled Backend Exception"}
+            [Server Error Alert] ${escapeHtml(data.context || "Unhandled Backend Exception")}
           </h2>
           <p style="font-size: 14px; color: #94A3B8;">
             An issue was captured on the Dainty Dazzle Backend Server (<strong>${env.NODE_ENV}</strong>).
@@ -270,13 +296,13 @@ class EmailService {
             <tr>
               <td style="padding: 8px 0; border-bottom: 1px solid #334155; width: 140px; color: #94A3B8;">Method & Path:</td>
               <td style="padding: 8px 0; border-bottom: 1px solid #334155; font-family: monospace; color: #38BDF8;">
-                ${data.method || "N/A"} ${data.path || "N/A"}
+                ${escapeHtml(data.method || "N/A")} ${escapeHtml(data.path || "N/A")}
               </td>
             </tr>
             <tr>
               <td style="padding: 8px 0; border-bottom: 1px solid #334155; color: #94A3B8;">Request ID:</td>
               <td style="padding: 8px 0; border-bottom: 1px solid #334155; font-family: monospace;">
-                ${data.requestId || "N/A"}
+                ${escapeHtml(data.requestId || "N/A")}
               </td>
             </tr>
             <tr>
@@ -288,22 +314,20 @@ class EmailService {
             <tr>
               <td style="padding: 8px 0; border-bottom: 1px solid #334155; color: #94A3B8;">Error Message:</td>
               <td style="padding: 8px 0; border-bottom: 1px solid #334155; color: #F87171; font-weight: bold;">
-                ${errorMessage}
+                ${escapeHtml(errorMessage)}
               </td>
             </tr>
           </table>
 
           <h4 style="margin: 20px 0 8px; color: #E2E8F0; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Stack Trace:</h4>
-          <pre style="background: #0F172A; padding: 14px; border-radius: 6px; font-family: 'SFMono-Regular', Consolas, Monaco, monospace; font-size: 12px; color: #FCA5A5; overflow-x: auto; white-space: pre-wrap; line-height: 1.5; border: 1px solid #334155;">${errorStack}</pre>
+          <pre style="background: #0F172A; padding: 14px; border-radius: 6px; font-family: 'SFMono-Regular', Consolas, Monaco, monospace; font-size: 12px; color: #FCA5A5; overflow-x: auto; white-space: pre-wrap; line-height: 1.5; border: 1px solid #334155;">${escapeHtml(errorStack)}</pre>
 
           ${
             data.metadata
               ? `
           <h4 style="margin: 20px 0 8px; color: #E2E8F0; font-size: 13px; text-transform: uppercase;">Metadata:</h4>
-          <pre style="background: #0F172A; padding: 14px; border-radius: 6px; font-family: monospace; font-size: 12px; color: #94A3B8; overflow-x: auto; border: 1px solid #334155;">${JSON.stringify(
-            data.metadata,
-            null,
-            2,
+          <pre style="background: #0F172A; padding: 14px; border-radius: 6px; font-family: monospace; font-size: 12px; color: #94A3B8; overflow-x: auto; border: 1px solid #334155;">${escapeHtml(
+            JSON.stringify(data.metadata, null, 2),
           )}</pre>`
               : ""
           }
