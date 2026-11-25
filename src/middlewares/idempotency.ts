@@ -1,9 +1,12 @@
+import crypto from "node:crypto";
 import { createMiddleware } from "hono/factory";
 import { cache } from "../lib/redis.js";
 import { logger } from "../lib/logger.js";
+import { safeEqual } from "../lib/auth.js";
 
 interface IdempotencyRecord {
   status: "IN_PROGRESS" | "COMPLETED";
+  fingerprint: string;
   responseStatus?: number;
   responseBody?: unknown;
   createdAt: number;
@@ -19,11 +22,37 @@ export const idempotencyMiddleware = (options?: { ttlSeconds?: number }) =>
       return next();
     }
 
-    const idempotencyKey = c.req.header("Idempotency-Key");
+    const idempotencyKey = c.req.header("Idempotency-Key")?.trim();
     if (!idempotencyKey) {
-      // If header is omitted, continue normally
       return next();
     }
+    if (!/^[A-Za-z0-9_-]{16,128}$/.test(idempotencyKey)) {
+      return c.json(
+        {
+          success: false,
+          error: {
+            code: "INVALID_IDEMPOTENCY_KEY",
+            message: "Idempotency-Key must be 16 to 128 letters, numbers, underscores, or hyphens.",
+          },
+        },
+        400,
+      );
+    }
+
+    const rawBody = await c.req.raw.clone().text();
+    if (rawBody.length > 100_000) {
+      return c.json(
+        {
+          success: false,
+          error: { code: "PAYLOAD_TOO_LARGE", message: "Request body is too large" },
+        },
+        413,
+      );
+    }
+    const fingerprint = crypto
+      .createHash("sha256")
+      .update(`${c.req.method}:${c.req.path}:${rawBody}`)
+      .digest("hex");
 
     const ttl = options?.ttlSeconds || DEFAULT_EXPIRATION_SECONDS;
     const cacheKey = `idempotency:${idempotencyKey}`;
@@ -33,6 +62,19 @@ export const idempotencyMiddleware = (options?: { ttlSeconds?: number }) =>
     const existing = await cache.get<IdempotencyRecord>(cacheKey);
 
     if (existing) {
+      if (!existing.fingerprint || !safeEqual(existing.fingerprint, fingerprint)) {
+        return c.json(
+          {
+            success: false,
+            error: {
+              code: "IDEMPOTENCY_KEY_REUSED",
+              message: "This Idempotency-Key was already used for a different request.",
+            },
+          },
+          409,
+        );
+      }
+
       if (existing.status === "IN_PROGRESS") {
         logger.warn(`Idempotency conflict: Request ${idempotencyKey} is already in progress`, undefined, requestId);
         return c.json(
@@ -71,7 +113,7 @@ export const idempotencyMiddleware = (options?: { ttlSeconds?: number }) =>
 
     await cache.set(
       cacheKey,
-      { status: "IN_PROGRESS", createdAt: Date.now() },
+      { status: "IN_PROGRESS", fingerprint, createdAt: Date.now() },
       LOCK_TIMEOUT_SECONDS,
     );
 
@@ -89,6 +131,7 @@ export const idempotencyMiddleware = (options?: { ttlSeconds?: number }) =>
             cacheKey,
             {
               status: "COMPLETED",
+              fingerprint,
               responseStatus,
               responseBody: jsonBody,
               createdAt: Date.now(),
