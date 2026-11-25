@@ -43,9 +43,14 @@ class MemoryCacheFallback {
   }
 
   async incr(key: string): Promise<number> {
-    const existing = (await this.get<number>(key)) || 0;
-    const next = Number(existing) + 1;
-    await this.set(key, next);
+    const entry = this.store.get(key);
+    const expired = Boolean(entry?.expiresAt && Date.now() > entry.expiresAt);
+    const current = !entry || expired ? 0 : Number(JSON.parse(entry.value)) || 0;
+    const next = current + 1;
+    this.store.set(key, {
+      value: JSON.stringify(next),
+      expiresAt: !entry || expired ? undefined : entry.expiresAt,
+    });
     return next;
   }
 
@@ -147,6 +152,7 @@ export class DistributedCacheService {
     identifier: string,
     limit: number,
     windowSeconds: number,
+    failClosed = false,
   ): Promise<{ success: boolean; remaining: number; reset: number }> {
     const key = `ratelimit:${identifier}`;
     try {
@@ -154,6 +160,9 @@ export class DistributedCacheService {
         const count = await this.redis.incr(key);
         if (count === 1) {
           await this.redis.expire(key, windowSeconds);
+        } else {
+          const ttl = await this.redis.ttl(key);
+          if (ttl < 0) await this.redis.expire(key, windowSeconds);
         }
         const remaining = Math.max(0, limit - count);
         return {
@@ -175,7 +184,7 @@ export class DistributedCacheService {
       }
     } catch (err) {
       logger.error(`Rate limit check error for ${identifier}`, err);
-      return { success: true, remaining: limit, reset: Date.now() };
+      return { success: !failClosed, remaining: 0, reset: Date.now() };
     }
   }
 
