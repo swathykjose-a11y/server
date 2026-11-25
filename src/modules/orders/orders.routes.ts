@@ -3,6 +3,7 @@ import { zValidator } from "@hono/zod-validator";
 import { ordersService } from "./orders.service.js";
 import { createOrderSchema } from "./orders.schema.js";
 import { idempotencyMiddleware } from "../../middlewares/idempotency.js";
+import { orderViewTokenMatches } from "../../lib/auth.js";
 
 export const ordersRouter = new Hono();
 
@@ -15,22 +16,29 @@ ordersRouter.post(
     const input = c.req.valid("json");
     const idempotencyKey = c.req.header("Idempotency-Key");
 
-    const order = await ordersService.createOrder(input, idempotencyKey);
+    const result = await ordersService.createOrder(input, idempotencyKey);
 
     return c.json(
       {
         success: true,
-        order,
-        message: "Order placed successfully",
+        ...result,
+        message: "Pay the UPI request to confirm this order. Cash on delivery is not available.",
       },
       201,
     );
   },
 );
 
-// GET /api/orders/:id (Retrieve order by ID)
+// GET /api/orders/:id?token=... (customer receipt; token is returned at checkout)
 ordersRouter.get("/:id", async (c) => {
   const id = c.req.param("id");
-  const order = await ordersService.getOrderById(id);
-  return c.json(order);
+  const token = c.req.query("token") || "";
+  if (!orderViewTokenMatches(id, token)) {
+    return c.json(
+      { success: false, error: { code: "NOT_FOUND", message: "Order not found" } },
+      404,
+    );
+  }
+  const order = ordersService.toCustomerOrder(await ordersService.getOrderById(id));
+  return c.json({ success: true, order });
 });
