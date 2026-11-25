@@ -86,7 +86,7 @@ export class PaymentsService {
       throw new AppError("Malformed webhook payload", 400, "MALFORMED_WEBHOOK");
     }
 
-    const { merchantTransactionId, state, transactionId, responseCode } = decoded.data;
+    const { merchantTransactionId, state, transactionId, responseCode, amount } = decoded.data;
 
     // 3. Find transaction record
     const [existingTxn] = await db
@@ -106,8 +106,15 @@ export class PaymentsService {
       return { success: true, message: "Transaction already processed" };
     }
 
+    const expectedPaise = Number(existingTxn.amountInPaise);
+    const claimsPaid = decoded.success && (state === "COMPLETED" || responseCode === "SUCCESS");
+    if (claimsPaid && (!Number.isFinite(amount) || amount !== expectedPaise)) {
+      logger.warn(`PhonePe webhook amount mismatch for ${merchantTransactionId}`);
+      throw new AppError("Payment amount does not match the order", 400, "AMOUNT_MISMATCH");
+    }
+
     // 4. Update transaction & order status
-    if (decoded.success && (state === "COMPLETED" || responseCode === "SUCCESS")) {
+    if (claimsPaid) {
       await db
         .update(paymentTransactionsTable)
         .set({
@@ -156,7 +163,9 @@ export class PaymentsService {
       return { status: "SUCCESS", orderId: existingTxn.orderId };
     }
 
-    if (statusResult.success && statusResult.data?.state === "COMPLETED") {
+    const reportedPaise = statusResult.data?.amount;
+    const expectedPaise = Number(existingTxn.amountInPaise);
+    if (statusResult.success && statusResult.data?.state === "COMPLETED" && reportedPaise === expectedPaise) {
       await db
         .update(paymentTransactionsTable)
         .set({
