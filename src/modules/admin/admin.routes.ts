@@ -8,7 +8,8 @@ import { updateOrderStatusSchema, upsertProductSchema } from "./admin.schema.js"
 import { env } from "../../config/env.js";
 import { db } from "../../db/index.js";
 import { adminsTable } from "../../db/schema/index.js";
-import { verifyPassword, generateAdminToken, verifyAdminToken, type AdminTokenPayload } from "../../lib/auth.js";
+import { verifyPassword, generateAdminToken, verifyAdminToken, safeEqual, type AdminTokenPayload } from "../../lib/auth.js";
+import { clientAddress, rateLimitMiddleware } from "../../middlewares/rate-limit.js";
 import { cloudinaryService } from "../../lib/cloudinary.js";
 
 export const adminRouter = new Hono<{
@@ -20,10 +21,19 @@ export const adminRouter = new Hono<{
 // POST /api/admin/login (Public login for admin users)
 const loginSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(1),
+  password: z.string().min(1).max(200),
 });
 
-adminRouter.post("/login", zValidator("json", loginSchema), async (c) => {
+adminRouter.post(
+  "/login",
+  rateLimitMiddleware({
+    limit: 8,
+    windowSeconds: 15 * 60,
+    failClosed: true,
+    keyGenerator: (c) => `admin-login:${clientAddress(c)}`,
+  }),
+  zValidator("json", loginSchema),
+  async (c) => {
   const { email, password } = c.req.valid("json");
   const normalizedEmail = email.toLowerCase().trim();
 
@@ -33,7 +43,11 @@ adminRouter.post("/login", zValidator("json", loginSchema), async (c) => {
     .where(eq(adminsTable.email, normalizedEmail))
     .limit(1);
 
-  if (!admin || !verifyPassword(password, admin.passwordHash)) {
+  const passwordOk = admin
+    ? verifyPassword(password, admin.passwordHash)
+    : verifyPassword(password, `${"00".repeat(16)}:${"00".repeat(64)}`);
+
+  if (!admin || !passwordOk) {
     return c.json(
       {
         success: false,
@@ -67,7 +81,7 @@ adminRouter.use("*", async (c, next) => {
     c.req.header("X-Admin-Key") ||
     c.req.header("Authorization")?.replace(/^Bearer\s+/i, "");
 
-  if (adminKey && adminKey === env.ADMIN_API_KEY) {
+  if (adminKey && safeEqual(adminKey, env.ADMIN_API_KEY)) {
     return await next();
   }
 
@@ -91,8 +105,10 @@ adminRouter.use("*", async (c, next) => {
 // GET /api/admin/orders (List all orders with dropship details)
 adminRouter.get("/orders", async (c) => {
   const status = c.req.query("status");
-  const limit = c.req.query("limit") ? Number(c.req.query("limit")) : 50;
-  const offset = c.req.query("offset") ? Number(c.req.query("offset")) : 0;
+  const requestedLimit = Number(c.req.query("limit"));
+  const requestedOffset = Number(c.req.query("offset"));
+  const limit = Number.isFinite(requestedLimit) ? Math.min(100, Math.max(1, requestedLimit)) : 50;
+  const offset = Number.isFinite(requestedOffset) ? Math.min(10_000, Math.max(0, requestedOffset)) : 0;
 
   const orders = await adminService.listOrders({ status, limit, offset });
   return c.json({ orders });
@@ -130,8 +146,12 @@ adminRouter.post("/cms/:section", async (c) => {
 
 // POST /api/admin/upload (Upload image to Cloudinary)
 const uploadImageSchema = z.object({
-  file: z.string().min(1),
-  folder: z.string().optional().default("dainty-dazzle"),
+  file: z
+    .string()
+    .min(1)
+    .max(8_000_000)
+    .refine((value) => value.startsWith("data:image/"), "Upload must be an image data URL"),
+  folder: z.string().regex(/^[a-z0-9/_-]{1,80}$/i).optional().default("dainty-dazzle"),
 });
 
 adminRouter.post("/upload", zValidator("json", uploadImageSchema), async (c) => {
