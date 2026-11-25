@@ -1,7 +1,17 @@
 import crypto from "node:crypto";
 import { env } from "../config/env.js";
 
-const JWT_SECRET = process.env.JWT_SECRET || env.ADMIN_API_KEY || "dd_admin_secret_fallback_key";
+const JWT_SECRET = env.JWT_SECRET;
+
+export function safeEqual(a: string, b: string): boolean {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  if (left.length !== right.length) {
+    crypto.timingSafeEqual(left, left);
+    return false;
+  }
+  return crypto.timingSafeEqual(left, right);
+}
 
 /**
  * Hashes a plaintext password using crypto.scrypt
@@ -59,6 +69,16 @@ export function generateAdminToken(admin: { id: string; email: string; role: str
 /**
  * Validates a signed admin token
  */
+/** Unguessable capability for reading one order. Knowing the order id is not enough. */
+export function orderViewToken(orderId: string): string {
+  return crypto.createHmac("sha256", JWT_SECRET).update(`order-view:${orderId}`).digest("base64url");
+}
+
+export function orderViewTokenMatches(orderId: string, token: string): boolean {
+  if (!token || token.length > 200) return false;
+  return safeEqual(orderViewToken(orderId), token);
+}
+
 export function verifyAdminToken(token: string): AdminTokenPayload | null {
   try {
     const parts = token.split(".");
@@ -70,7 +90,7 @@ export function verifyAdminToken(token: string): AdminTokenPayload | null {
       .update(`${header}.${payload}`)
       .digest("base64url");
 
-    if (signature !== expectedSignature) return null;
+    if (!safeEqual(signature, expectedSignature)) return null;
 
     const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf-8")) as AdminTokenPayload;
     if (decoded.exp && decoded.exp < Math.floor(Date.now() / 1000)) {
