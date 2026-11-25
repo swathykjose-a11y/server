@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { env } from "../config/env.js";
 import { logger } from "./logger.js";
+import { safeEqual } from "./auth.js";
 
 export interface InitiatePaymentParams {
   merchantTransactionId: string;
@@ -172,9 +173,9 @@ class PhonePeService {
    * Validates PhonePe server-to-server webhook callback signature
    */
   verifyWebhook(base64Response: string, xVerifyHeader: string): boolean {
-    if (!xVerifyHeader) return false;
+    if (!xVerifyHeader || !this.saltKey || this.saltKey.length < 16) return false;
     const computed = this.generateChecksum(base64Response, "");
-    return computed === xVerifyHeader;
+    return safeEqual(computed, xVerifyHeader);
   }
 
   /**
