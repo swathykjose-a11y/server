@@ -1,6 +1,12 @@
 import "dotenv/config";
 import { z } from "zod";
 
+const KNOWN_WEAK_SECRETS = new Set([
+  "dd_admin_secret_key_change_me",
+  "dd_admin_secret_fallback_key",
+  "dd_revalidation_secret_key",
+]);
+
 const envSchema = z.object({
   PORT: z.coerce.number().default(8787),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
@@ -20,27 +26,43 @@ const envSchema = z.object({
   ADMIN_NOTIFICATION_EMAIL: z.string().email().default("swathykjose@gmail.com"),
   DEVELOPER_ALERT_EMAIL: z.string().email().default("bhavartheankit@gmail.com"),
 
-  // PhonePe Payment Gateway
+  // PhonePe is unused for storefront checkout. Leave blank unless a merchant account is configured.
   PHONEPE_ENV: z.enum(["UAT", "PRODUCTION"]).default("UAT"),
-  PHONEPE_MERCHANT_ID: z.string().default("PGTESTPAYUAT"),
-  PHONEPE_SALT_KEY: z.string().default("96434309-7796-489d-8924-ab56988a6076"),
+  PHONEPE_MERCHANT_ID: z.string().default(""),
+  PHONEPE_SALT_KEY: z.string().default(""),
   PHONEPE_SALT_INDEX: z.coerce.number().default(1),
   PHONEPE_REDIRECT_URL: z.string().default("https://daintydazzle.store/checkout/payment-status"),
   PHONEPE_CALLBACK_URL: z.string().default("https://api.daintydazzle.store/api/payments/phonepe-webhook"),
 
-  // Cloudinary Image Storage
-  CLOUDINARY_CLOUD_NAME: z.string().default("io2tbyjp"),
-  CLOUDINARY_API_KEY: z.string().default("335662177137422"),
-  CLOUDINARY_API_SECRET: z.string().default("BKiTUZvUNmjTqCUaYOVR7LLTv48"),
+  // Cloudinary Image Storage — required only for admin uploads
+  CLOUDINARY_CLOUD_NAME: z.string().default(""),
+  CLOUDINARY_API_KEY: z.string().default(""),
+  CLOUDINARY_API_SECRET: z.string().default(""),
   CLOUDINARY_URL: z.string().optional(),
 
   // Sentry
   SENTRY_DSN: z.string().optional(),
   SENTRY_ENVIRONMENT: z.string().default("development"),
 
-  // Admin Security
-  ADMIN_API_KEY: z.string().default("dd_admin_secret_key_change_me"),
-  REVALIDATION_SECRET: z.string().default("dd_revalidation_secret_key"),
+  // Admin Security — no defaults. Known placeholder values are rejected.
+  JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters"),
+  ADMIN_API_KEY: z
+    .string()
+    .min(24, "ADMIN_API_KEY must be at least 24 characters")
+    .refine((value) => !KNOWN_WEAK_SECRETS.has(value), "ADMIN_API_KEY is a publicly known placeholder"),
+  REVALIDATION_SECRET: z
+    .string()
+    .min(24, "REVALIDATION_SECRET must be at least 24 characters")
+    .refine((value) => !KNOWN_WEAK_SECRETS.has(value), "REVALIDATION_SECRET is a publicly known placeholder"),
+
+  // Set only on the reverse proxy. Callers who can reach the API directly cannot supply it.
+  TRUSTED_PROXY_SECRET: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+    z
+      .string()
+      .min(24, "TRUSTED_PROXY_SECRET must be at least 24 characters")
+      .optional(),
+  ),
 });
 
 export type Env = z.infer<typeof envSchema>;
