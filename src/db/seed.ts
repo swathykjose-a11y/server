@@ -57,6 +57,7 @@ async function seed() {
       descriptionHtml:
         "<p>Sculptural twisted hoop earrings crafted with 18k gold vermeil over sterling silver. Designed to catch light with every turn, adding effortless warmth and modern elegance to any outfit.</p><p>Hypoallergenic, water-resistant, and lightweight for all-day comfort.</p>",
       availableForSale: true,
+      isActive: true,
       totalInventory: 25,
       minPrice: "899.00",
       compareAtPrice: "1499.00",
@@ -99,6 +100,7 @@ async function seed() {
       descriptionHtml:
         "<p>An organic, luminous genuine freshwater baroque pearl suspended from a delicate Singapore twist chain. Each pearl is hand-selected and unique, embodying natural, unrepeatable grace.</p><p>Adjustable chain length: 16 to 18 inches.</p>",
       availableForSale: true,
+      isActive: true,
       totalInventory: 18,
       minPrice: "1299.00",
       compareAtPrice: "1899.00",
@@ -141,6 +143,7 @@ async function seed() {
       descriptionHtml:
         "<p>Everyday mini huggie hoops featuring an artisanal hammered texture that captures subtle reflections. Designed with a secure click clasp for seamless daily wear.</p><p>Diameter: 12mm. Crafted in anti-tarnish stainless steel with triple gold dipping.</p>",
       availableForSale: true,
+      isActive: true,
       totalInventory: 30,
       minPrice: "749.00",
       compareAtPrice: "1199.00",
@@ -171,6 +174,7 @@ async function seed() {
       descriptionHtml:
         "<p>Liquid gold drape. This flat-woven serpentine chain rests flush against the collarbone with mirror-like shine. Striking when worn alone or paired with delicate charms.</p><p>Width: 3mm. Length: 40cm + 5cm extension.</p>",
       availableForSale: true,
+      isActive: true,
       totalInventory: 20,
       minPrice: "1199.00",
       compareAtPrice: "1699.00",
