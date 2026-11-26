@@ -4,7 +4,8 @@ import { zValidator } from "@hono/zod-validator";
 import { eq } from "drizzle-orm";
 import { adminService } from "./admin.service.js";
 import { cmsService } from "../cms/cms.service.js";
-import { updateOrderStatusSchema, upsertProductSchema } from "./admin.schema.js";
+import { paymentsService } from "../payments/payments.service.js";
+import { updateOrderStatusSchema, upsertProductSchema, verifyPaymentSchema } from "./admin.schema.js";
 import { env } from "../../config/env.js";
 import { db } from "../../db/index.js";
 import { adminsTable } from "../../db/schema/index.js";
@@ -166,4 +167,25 @@ adminRouter.post("/upload", zValidator("json", uploadImageSchema), async (c) => 
   }
 
   return c.json({ success: true, image: uploadResult });
+});
+
+// GET /api/admin/payments/overview (Store UPI receiving info, transactions, and audit stats)
+adminRouter.get("/payments/overview", async (c) => {
+  const overview = await adminService.getPaymentReceivingOverview();
+  return c.json({ success: true, ...overview });
+});
+
+// POST /api/admin/orders/:id/verify-payment (Verify incoming UPI or gateway payment for order)
+adminRouter.post("/orders/:id/verify-payment", zValidator("json", verifyPaymentSchema), async (c) => {
+  const id = c.req.param("id");
+  const input = c.req.valid("json");
+  const updated = await adminService.verifyOrderPayment(id, input);
+  return c.json({ success: true, order: updated });
+});
+
+// POST /api/admin/payments/reconcile/:transactionId (Trigger PhonePe status check & reconcile)
+adminRouter.post("/payments/reconcile/:transactionId", async (c) => {
+  const transactionId = c.req.param("transactionId");
+  const result = await paymentsService.checkStatusAndReconcile(transactionId);
+  return c.json(result);
 });
