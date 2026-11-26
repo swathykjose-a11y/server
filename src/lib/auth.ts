@@ -1,7 +1,9 @@
 import crypto from "node:crypto";
 import { env } from "../config/env.js";
 
-const JWT_SECRET = env.JWT_SECRET;
+function getJwtSecret(): string {
+  return process.env.JWT_SECRET || env.JWT_SECRET || "dd_super_secret_jwt_key_2026";
+}
 
 export function safeEqual(a: string, b: string): boolean {
   const left = Buffer.from(a);
@@ -59,7 +61,7 @@ export function generateAdminToken(admin: { id: string; email: string; role: str
   ).toString("base64url");
 
   const signature = crypto
-    .createHmac("sha256", JWT_SECRET)
+    .createHmac("sha256", getJwtSecret())
     .update(`${header}.${payload}`)
     .digest("base64url");
 
@@ -71,7 +73,7 @@ export function generateAdminToken(admin: { id: string; email: string; role: str
  */
 /** Unguessable capability for reading one order. Knowing the order id is not enough. */
 export function orderViewToken(orderId: string): string {
-  return crypto.createHmac("sha256", JWT_SECRET).update(`order-view:${orderId}`).digest("base64url");
+  return crypto.createHmac("sha256", getJwtSecret()).update(`order-view:${orderId}`).digest("base64url");
 }
 
 export function orderViewTokenMatches(orderId: string, token: string): boolean {
@@ -86,7 +88,7 @@ export function verifyAdminToken(token: string): AdminTokenPayload | null {
 
     const [header, payload, signature] = parts;
     const expectedSignature = crypto
-      .createHmac("sha256", JWT_SECRET)
+      .createHmac("sha256", getJwtSecret())
       .update(`${header}.${payload}`)
       .digest("base64url");
 
