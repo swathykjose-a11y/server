@@ -6,12 +6,15 @@ import {
   productsTable,
   productVariantsTable,
   collectionProductsTable,
+  paymentTransactionsTable,
+  pollingAuditLogsTable,
 } from "../../db/schema/index.js";
 import { z } from "zod";
-import { updateOrderStatusSchema, upsertProductSchema } from "./admin.schema.js";
+import { updateOrderStatusSchema, upsertProductSchema, verifyPaymentSchema } from "./admin.schema.js";
 import { productsService } from "../products/products.service.js";
 import { logger } from "../../lib/logger.js";
 import { AppError } from "../../middlewares/error-handler.js";
+import { STORE_UPI, buildUpiUri } from "../../config/store-payment.js";
 
 export class AdminService {
   async listOrders(params?: { status?: string; limit?: number; offset?: number }) {
@@ -45,19 +48,120 @@ export class AdminService {
       .update(ordersTable)
       .set({
         status: input.status || existing.status,
+        paymentStatus: input.paymentStatus || existing.paymentStatus,
+        paymentMethod: input.paymentMethod || existing.paymentMethod,
         supplierOrderId: input.supplierOrderId !== undefined ? input.supplierOrderId : existing.supplierOrderId,
         supplierOrderUrl: input.supplierOrderUrl !== undefined ? input.supplierOrderUrl : existing.supplierOrderUrl,
         supplierCost: input.supplierCost !== undefined ? input.supplierCost.toFixed(2) : existing.supplierCost,
         supplierNotes: input.supplierNotes !== undefined ? input.supplierNotes : existing.supplierNotes,
         courierTrackingNumber: input.courierTrackingNumber !== undefined ? input.courierTrackingNumber : existing.courierTrackingNumber,
         courierTrackingUrl: input.courierTrackingUrl !== undefined ? input.courierTrackingUrl : existing.courierTrackingUrl,
+        notes: input.notes !== undefined ? input.notes : existing.notes,
         updatedAt: new Date(),
       })
       .where(eq(ordersTable.id, orderId))
       .returning();
 
-    logger.info(`Admin updated order #${updated.orderNumber} status to [${updated.status}]`);
+    logger.info(`Admin updated order #${updated.orderNumber} status to [${updated.status}], payment [${updated.paymentStatus}]`);
     return updated;
+  }
+
+  async verifyOrderPayment(orderId: string, input: z.infer<typeof verifyPaymentSchema>) {
+    const [existing] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId)).limit(1);
+
+    if (!existing) {
+      throw new AppError("Order not found", 404, "ORDER_NOT_FOUND");
+    }
+
+    const newPaymentStatus = input.paymentStatus;
+    // Auto-confirm order if marking as paid and status was pending
+    let newStatus = existing.status;
+    if (newPaymentStatus === "paid" && input.autoConfirmOrder && existing.status === "pending") {
+      newStatus = "confirmed";
+    }
+
+    const verificationNote = input.utr
+      ? `[UPI Verified - UTR: ${input.utr.trim()}] ${input.notes || ""}`.trim()
+      : input.notes
+        ? `[Payment Verified] ${input.notes.trim()}`
+        : existing.notes;
+
+    const [updated] = await db
+      .update(ordersTable)
+      .set({
+        paymentStatus: newPaymentStatus,
+        status: newStatus,
+        notes: verificationNote,
+        updatedAt: new Date(),
+      })
+      .where(eq(ordersTable.id, orderId))
+      .returning();
+
+    logger.info(`Admin verified payment for order #${updated.orderNumber}: paymentStatus=[${newPaymentStatus}], status=[${newStatus}]`);
+    return updated;
+  }
+
+  async getPaymentReceivingOverview() {
+    const allOrders = await db.select().from(ordersTable).orderBy(desc(ordersTable.createdAt));
+
+    let totalPaidInr = 0;
+    let pendingVerificationInr = 0;
+    let pendingVerificationCount = 0;
+    const paymentMethodCounts = { upi: 0, phonepe: 0, cod: 0, online: 0 };
+    const paymentStatusCounts = { pending: 0, paid: 0, failed: 0, refunded: 0 };
+
+    for (const order of allOrders) {
+      const orderTotal = Number(order.total) || 0;
+      const method = (order.paymentMethod || "upi").toLowerCase() as keyof typeof paymentMethodCounts;
+      const pStatus = (order.paymentStatus || "pending").toLowerCase() as keyof typeof paymentStatusCounts;
+
+      if (paymentMethodCounts[method] !== undefined) {
+        paymentMethodCounts[method]++;
+      }
+      if (paymentStatusCounts[pStatus] !== undefined) {
+        paymentStatusCounts[pStatus]++;
+      }
+
+      if (pStatus === "paid") {
+        totalPaidInr += orderTotal;
+      } else if (pStatus === "pending") {
+        pendingVerificationInr += orderTotal;
+        pendingVerificationCount++;
+      }
+    }
+
+    // Recent payment transactions (e.g. PhonePe or gateway)
+    const recentTransactions = await db
+      .select()
+      .from(paymentTransactionsTable)
+      .orderBy(desc(paymentTransactionsTable.createdAt))
+      .limit(20);
+
+    // Recent polling audit logs
+    const recentAuditLogs = await db
+      .select()
+      .from(pollingAuditLogsTable)
+      .orderBy(desc(pollingAuditLogsTable.createdAt))
+      .limit(10);
+
+    return {
+      storeUpi: {
+        payeeName: STORE_UPI.payeeName,
+        vpa: STORE_UPI.vpa,
+        phone: STORE_UPI.phone,
+        sampleUri: buildUpiUri(1299, "Dainty Dazzle Preview"),
+      },
+      stats: {
+        totalPaidInr: Math.round(totalPaidInr * 100) / 100,
+        pendingVerificationInr: Math.round(pendingVerificationInr * 100) / 100,
+        pendingVerificationCount,
+        paymentMethodCounts,
+        paymentStatusCounts,
+        totalTransactionsRecorded: recentTransactions.length,
+      },
+      recentTransactions,
+      recentAuditLogs,
+    };
   }
 
   async upsertProduct(input: z.infer<typeof upsertProductSchema>) {
