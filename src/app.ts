@@ -83,6 +83,8 @@ export function createApp(): Hono {
   app.use("*", requestLoggerMiddleware);
   app.use("/api/*", rateLimitMiddleware({ limit: 300, windowSeconds: 60 }));
 
+  const serverStartTime = Date.now();
+
   // 2. Health Check
   app.get("/health", async (c) => {
     const isDbHealthy = await checkDatabaseHealth();
@@ -95,7 +97,7 @@ export function createApp(): Hono {
       {
         status: healthy ? "healthy" : "degraded",
         timestamp: new Date().toISOString(),
-        uptime: process.uptime(),
+        uptime: typeof process.uptime === "function" ? process.uptime() : Math.round((Date.now() - serverStartTime) / 1000),
         checks: {
           database: isDbHealthy ? "connected" : "disconnected",
           redis: isRedisHealthy ? "connected" : "disconnected",

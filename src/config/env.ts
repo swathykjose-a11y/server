@@ -67,15 +67,29 @@ const envSchema = z.object({
 
 export type Env = z.infer<typeof envSchema>;
 
-function loadEnv(): Env {
+let _cachedEnv: Env | null = null;
+
+export function getEnv(): Env {
+  if (_cachedEnv) return _cachedEnv;
   const result = envSchema.safeParse(process.env);
-
-  if (!result.success) {
-    console.error("[CONFIG ERROR] Invalid environment variables:", result.error.format());
-    throw new Error("Invalid environment configuration. Please check your .env file.");
+  if (result.success) {
+    _cachedEnv = result.data;
+    return _cachedEnv;
   }
-
-  return result.data;
+  // During Cloudflare Worker bundle evaluation / validation, process.env is not yet populated with bindings
+  return (process.env as any) || {};
 }
 
-export const env = loadEnv();
+export function reloadEnv(): Env {
+  _cachedEnv = null;
+  return getEnv();
+}
+
+export const env: Env = new Proxy({} as Env, {
+  get(_target, prop: string) {
+    const current = getEnv();
+    const val = (current as any)[prop];
+    if (val !== undefined) return val;
+    return (process.env as any)?.[prop];
+  },
+});
