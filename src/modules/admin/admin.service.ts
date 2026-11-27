@@ -108,7 +108,7 @@ export class AdminService {
     let totalPaidInr = 0;
     let pendingVerificationInr = 0;
     let pendingVerificationCount = 0;
-    const paymentMethodCounts = { upi: 0, phonepe: 0, cod: 0, online: 0 };
+    const paymentMethodCounts = { upi: 0, cod: 0, online: 0 };
     const paymentStatusCounts = { pending: 0, paid: 0, failed: 0, refunded: 0 };
 
     for (const order of allOrders) {

@@ -5,7 +5,6 @@ import { initSentry } from "./config/sentry.js";
 import { logger } from "./lib/logger.js";
 import { emailService } from "./lib/resend.js";
 import { closeDatabaseConnection } from "./db/index.js";
-import { paymentReconciler } from "./workers/payment-reconciler.js";
 
 // 1. Initialize Sentry
 initSentry();
@@ -48,10 +47,7 @@ process.on("uncaughtException", (error) => {
     .catch(() => {});
 });
 
-// 4. Start Database Polling Worker for Payment Reconciliation
-paymentReconciler.start(60000); // Polls every 60 seconds with distributed Redis lock
-
-// 5. Graceful Shutdown Management
+// 4. Graceful Shutdown Management
 let isShuttingDown = false;
 
 async function handleGracefulShutdown(signal: string) {
@@ -59,9 +55,6 @@ async function handleGracefulShutdown(signal: string) {
   isShuttingDown = true;
 
   logger.info(`[SHUTDOWN] Received ${signal}. Starting graceful shutdown...`);
-
-  // Stop background worker first
-  paymentReconciler.stop();
 
   // Close HTTP server to stop accepting new requests
   server.close(async () => {

@@ -24,11 +24,6 @@
     "CLOUDINARY_CLOUD_NAME": "io2tbyjp",
     "CLOUDINARY_API_KEY": "335662177137422",
     "SENTRY_DSN": "https://ae63c127b10e7b29d1228b478c338c41@o4512456859975680.ingest.de.sentry.io/4512456876752976",
-    "SENTRY_ENVIRONMENT": "production",
-    "PHONEPE_ENV": "UAT",
-    "PHONEPE_MERCHANT_ID": "PGTESTPAYUAT",
-    "PHONEPE_SALT_INDEX": "1",
-    "PHONEPE_REDIRECT_URL": "https://daintydazzle.store/checkout/payment-status",
-    "PHONEPE_CALLBACK_URL": "https://api.daintydazzle.store/api/payments/phonepe-webhook"
+    "SENTRY_ENVIRONMENT": "production"
   }
 }

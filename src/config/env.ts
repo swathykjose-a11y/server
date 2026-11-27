@@ -26,14 +26,6 @@ const envSchema = z.object({
   ADMIN_NOTIFICATION_EMAIL: z.string().email().default("swathykjose@gmail.com"),
   DEVELOPER_ALERT_EMAIL: z.string().email().default("bhavartheankit@gmail.com"),
 
-  // PhonePe is unused for storefront checkout. Leave blank unless a merchant account is configured.
-  PHONEPE_ENV: z.enum(["UAT", "PRODUCTION"]).default("UAT"),
-  PHONEPE_MERCHANT_ID: z.string().default(""),
-  PHONEPE_SALT_KEY: z.string().default(""),
-  PHONEPE_SALT_INDEX: z.coerce.number().default(1),
-  PHONEPE_REDIRECT_URL: z.string().default("https://daintydazzle.store/checkout/payment-status"),
-  PHONEPE_CALLBACK_URL: z.string().default("https://api.daintydazzle.store/api/payments/phonepe-webhook"),
-
   // Cloudinary Image Storage — required only for admin uploads
   CLOUDINARY_CLOUD_NAME: z.string().default(""),
   CLOUDINARY_API_KEY: z.string().default(""),

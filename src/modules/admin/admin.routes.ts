@@ -4,7 +4,6 @@ import { zValidator } from "@hono/zod-validator";
 import { eq } from "drizzle-orm";
 import { adminService } from "./admin.service.js";
 import { cmsService } from "../cms/cms.service.js";
-import { paymentsService } from "../payments/payments.service.js";
 import { updateOrderStatusSchema, upsertProductSchema, verifyPaymentSchema } from "./admin.schema.js";
 import { env } from "../../config/env.js";
 import { db } from "../../db/index.js";
@@ -187,9 +186,4 @@ adminRouter.post("/orders/:id/verify-payment", zValidator("json", verifyPaymentS
   return c.json({ success: true, order: updated });
 });
 
-// POST /api/admin/payments/reconcile/:transactionId (Trigger PhonePe status check & reconcile)
-adminRouter.post("/payments/reconcile/:transactionId", async (c) => {
-  const transactionId = c.req.param("transactionId");
-  const result = await paymentsService.checkStatusAndReconcile(transactionId);
-  return c.json(result);
-});
+

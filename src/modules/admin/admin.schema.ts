@@ -8,7 +8,7 @@ export const updateOrderStatusSchema = z.object({
     .enum(["pending", "paid", "failed", "refunded"])
     .optional(),
   paymentMethod: z
-    .enum(["upi", "phonepe", "cod", "online"])
+    .enum(["upi", "cod", "online"])
     .optional(),
   supplierOrderId: z.string().optional(),
   supplierOrderUrl: z.string().url().optional().or(z.literal("")),
