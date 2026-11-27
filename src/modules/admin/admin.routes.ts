@@ -78,16 +78,20 @@ adminRouter.post(
 
 // Admin Authentication Middleware (applies to all routes defined below)
 adminRouter.use("*", async (c, next) => {
-  const adminKey =
-    c.req.header("X-Admin-Key") ||
-    c.req.header("Authorization")?.replace(/^Bearer\s+/i, "");
-
-  if (adminKey && safeEqual(adminKey, env.ADMIN_API_KEY)) {
+  const xAdminKey = c.req.header("x-admin-key") || c.req.header("X-Admin-Key");
+  if (xAdminKey && safeEqual(xAdminKey, env.ADMIN_API_KEY)) {
     return await next();
   }
 
-  if (adminKey) {
-    const verified = verifyAdminToken(adminKey);
+  const authHeader = c.req.header("authorization") || c.req.header("Authorization");
+  const bearerToken = authHeader?.replace(/^Bearer\s+/i, "");
+
+  if (bearerToken && safeEqual(bearerToken, env.ADMIN_API_KEY)) {
+    return await next();
+  }
+
+  if (bearerToken) {
+    const verified = verifyAdminToken(bearerToken);
     if (verified) {
       c.set("adminUser", verified);
       return await next();
