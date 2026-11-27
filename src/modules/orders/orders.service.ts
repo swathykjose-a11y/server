@@ -11,12 +11,46 @@ import { FREE_SHIPPING_MIN_INR, SHIPPING_FEE_INR, STORE_UPI, buildUpiUri } from 
 
 export class OrdersService {
   /**
-   * Generates a clean customer-facing order number: DD-<timestamp-slice>-<random>
+   * Generates sequential customer-facing order number starting from DD_001.
+   * Prefix is always "DD_00" (e.g. DD_001, DD_002, DD_0010, ...).
    */
-  private generateOrderNumber(): string {
-    const timestamp = Date.now().toString().slice(-5);
-    const random = crypto.randomInt(1000, 10000);
-    return `DD-${timestamp}-${random}`;
+  private async generateOrderNumber(): Promise<string> {
+    try {
+      const allOrders = await db
+        .select({ orderNumber: ordersTable.orderNumber })
+        .from(ordersTable);
+
+      let maxSeq = 0;
+      const existingNumbers = new Set<string>();
+
+      for (const o of allOrders) {
+        if (!o.orderNumber) continue;
+        existingNumbers.add(o.orderNumber);
+
+        // Matches DD_001, DD_002, DD_0010, etc.
+        const match = o.orderNumber.match(/^DD_00(\d+)$/i);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          if (!isNaN(num) && num > maxSeq) {
+            maxSeq = num;
+          }
+        }
+      }
+
+      let nextSeq = maxSeq + 1;
+      let candidate = `DD_00${nextSeq}`;
+
+      // Collision avoidance in case of gaps or manual entries
+      while (existingNumbers.has(candidate)) {
+        nextSeq++;
+        candidate = `DD_00${nextSeq}`;
+      }
+
+      return candidate;
+    } catch (err) {
+      logger.error("Failed to calculate sequential order number, fallback to DD_001", err);
+      return `DD_001`;
+    }
   }
 
   async createOrder(input: CreateOrderInput, idempotencyKey?: string) {
@@ -25,7 +59,7 @@ export class OrdersService {
     }
 
     const orderId = `ord_${crypto.randomUUID()}`;
-    const orderNumber = this.generateOrderNumber();
+    const orderNumber = await this.generateOrderNumber();
 
     // Check if idempotencyKey was already committed in DB
     if (idempotencyKey) {

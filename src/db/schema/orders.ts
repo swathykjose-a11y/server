@@ -4,7 +4,7 @@ export const ordersTable = pgTable(
   "orders",
   {
     id: text("id").primaryKey(), // uuid
-    orderNumber: text("order_number").notNull(), // e.g. DD-84729-1029
+    orderNumber: text("order_number").notNull(), // e.g. DD_001, DD_002
 
     // Customer Contact
     customerFirstName: text("customer_first_name").notNull(),
