@@ -4,6 +4,7 @@ import { db } from "../../db/index.js";
 import { ordersTable, orderItemsTable, productsTable, productVariantsTable } from "../../db/schema/index.js";
 import { CreateOrderInput } from "./orders.schema.js";
 import { emailService } from "../../lib/resend.js";
+import { sendFreeAdminPhoneAlert } from "../../lib/notify.js";
 import { logger } from "../../lib/logger.js";
 import { AppError } from "../../middlewares/error-handler.js";
 import { orderViewToken } from "../../lib/auth.js";
@@ -124,6 +125,19 @@ export class OrdersService {
 
     this.dispatchOrderEmails(createdOrder.id).catch((err) => {
       logger.error(`Failed to dispatch emails for order #${orderNumber}`, err);
+    });
+
+    const itemsSummary = priced.lines
+      .map((l) => `${l.productTitle} x${l.quantity}`)
+      .join(", ");
+    sendFreeAdminPhoneAlert({
+      orderNumber,
+      totalInr: priced.total,
+      customerName: `${input.customer.firstName} ${input.customer.lastName}`.trim(),
+      customerPhone: input.customer.phone,
+      itemsSummary,
+    }).catch((err) => {
+      logger.error(`Failed to send phone alert for order #${orderNumber}`, err);
     });
 
     const order = await this.getOrderById(createdOrder.id);

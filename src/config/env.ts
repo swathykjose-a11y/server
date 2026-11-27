@@ -26,6 +26,13 @@ const envSchema = z.object({
   ADMIN_NOTIFICATION_EMAIL: z.string().email().default("swathykjose@gmail.com"),
   DEVELOPER_ALERT_EMAIL: z.string().email().default("bhavartheankit@gmail.com"),
 
+  // Free Instant Admin Phone Alerts (optional — configure any one)
+  NTFY_TOPIC: z.string().optional(),
+  TELEGRAM_BOT_TOKEN: z.string().optional(),
+  TELEGRAM_CHAT_ID: z.string().optional(),
+  CALLMEBOT_PHONE: z.string().optional(),
+  CALLMEBOT_API_KEY: z.string().optional(),
+
   // Cloudinary Image Storage — required only for admin uploads
   CLOUDINARY_CLOUD_NAME: z.string().default(""),
   CLOUDINARY_API_KEY: z.string().default(""),
