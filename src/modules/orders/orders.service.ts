@@ -102,7 +102,9 @@ export class OrdersService {
         paymentStatus: "pending",
         status: "pending",
         idempotencyKey,
-        notes: input.notes,
+        notes: input.notes
+          ? `UTR: ${input.transactionId} | ${input.notes}`
+          : `UTR: ${input.transactionId}`,
       })
       .returning();
 
@@ -136,6 +138,7 @@ export class OrdersService {
       customerName: `${input.customer.firstName} ${input.customer.lastName}`.trim(),
       customerPhone: input.customer.phone,
       itemsSummary,
+      transactionId: input.transactionId,
     }).catch((err) => {
       logger.error(`Failed to send phone alert for order #${orderNumber}`, err);
     });

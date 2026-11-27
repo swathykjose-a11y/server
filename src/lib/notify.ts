@@ -7,6 +7,7 @@ interface NewOrderAlertPayload {
   customerName: string;
   customerPhone: string;
   itemsSummary: string;
+  transactionId: string;
 }
 
 /**
@@ -17,7 +18,8 @@ export async function sendFreeAdminPhoneAlert(payload: NewOrderAlertPayload): Pr
   const adminUrl = "https://admin.daintydazzle.store/?tab=payments";
   const message =
     `New Order ${payload.orderNumber}\n` +
-    `Amount: ₹${payload.totalInr.toFixed(0)} (UPI Pending)\n` +
+    `Amount: ₹${payload.totalInr.toFixed(0)} (Verify UPI)\n` +
+    `UTR / Txn ID: ${payload.transactionId}\n` +
     `Customer: ${payload.customerName} (${payload.customerPhone})\n` +
     `Items: ${payload.itemsSummary}\n` +
     `Verify payment: ${adminUrl}`;
@@ -35,7 +37,7 @@ export async function sendFreeAdminPhoneAlert(payload: NewOrderAlertPayload): Pr
           Tags: "shopping_bags,bell",
           Click: adminUrl,
         },
-        body: `${payload.customerName} (${payload.customerPhone})\n${payload.itemsSummary}\nTap to verify UPI payment.`,
+        body: `UTR: ${payload.transactionId}\n${payload.customerName} (${payload.customerPhone})\n${payload.itemsSummary}\nTap to verify payment.`,
       }).catch((err) => logger.warn("ntfy alert failed", err)),
     );
   }

@@ -33,6 +33,11 @@ export const createOrderSchema = z.object({
   shippingFee: z.coerce.number().nonnegative().optional(),
   total: z.coerce.number().nonnegative().optional(),
   paymentMethod: z.literal("upi"),
+  transactionId: z
+    .string()
+    .trim()
+    .min(6, "Please enter a valid UPI Transaction ID / UTR")
+    .max(60, "Transaction ID is too long"),
   notes: z.string().trim().max(500).optional(),
 });
 
