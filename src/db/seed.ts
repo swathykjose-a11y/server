@@ -20,7 +20,7 @@ async function seed() {
       handle: "earrings",
       title: "Earrings",
       description: "Handcrafted hoops, huggies, drops, and studs designed for effortless everyday wear.",
-      imageUrl: "https://images.unsplash.com/photo-1630019852942-f89202989a59?w=1200&q=85&auto=format&fit=crop",
+      imageUrl: "https://res.cloudinary.com/io2tbyjp/image/upload/v1795766225/dainty-dazzle/dainty-dazzle/06-product-earrings-model.jpg",
       imageAlt: "Dainty Dazzle Earrings Collection",
     },
     {
@@ -28,7 +28,7 @@ async function seed() {
       handle: "necklaces",
       title: "Necklaces",
       description: "Sculptural chains, luminous pearl pendants, and dainty chokers to layer or wear alone.",
-      imageUrl: "https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=1200&q=85&auto=format&fit=crop",
+      imageUrl: "https://res.cloudinary.com/io2tbyjp/image/upload/v1795766227/dainty-dazzle/dainty-dazzle/07-product-snake-chain.jpg",
       imageAlt: "Dainty Dazzle Necklaces Collection",
     },
     {
@@ -36,7 +36,7 @@ async function seed() {
       handle: "new-arrivals",
       title: "New Arrivals",
       description: "Freshly added designs reflecting understated luxury and contemporary elegance.",
-      imageUrl: "https://images.unsplash.com/photo-1617038220319-276d3cfab638?w=1200&q=85&auto=format&fit=crop",
+      imageUrl: "https://res.cloudinary.com/io2tbyjp/image/upload/v1795766223/dainty-dazzle/dainty-dazzle/05-product-pearl-details.jpg",
       imageAlt: "Dainty Dazzle New Arrivals",
     },
   ];
@@ -65,12 +65,8 @@ async function seed() {
       tags: ["earrings", "new", "gold", "hoops"],
       images: [
         {
-          url: "https://images.unsplash.com/photo-1630019852942-f89202989a59?w=1200&q=85&auto=format&fit=crop",
+          url: "https://res.cloudinary.com/io2tbyjp/image/upload/v1795766225/dainty-dazzle/dainty-dazzle/06-product-earrings-model.jpg",
           altText: "Golden Aura Twisted Hoops fine jewelry",
-        },
-        {
-          url: "https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=1200&q=85&auto=format&fit=crop",
-          altText: "Golden Aura Twisted Hoops model view",
         },
       ],
       variants: [
@@ -108,12 +104,8 @@ async function seed() {
       tags: ["necklaces", "pearl", "sale", "bestseller"],
       images: [
         {
-          url: "https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=1200&q=85&auto=format&fit=crop",
+          url: "https://res.cloudinary.com/io2tbyjp/image/upload/v1795766223/dainty-dazzle/dainty-dazzle/05-product-pearl-details.jpg",
           altText: "Celestial Freshwater Pearl Pendant fine necklace",
-        },
-        {
-          url: "https://images.unsplash.com/photo-1611591437281-460bfbe1220a?w=1200&q=85&auto=format&fit=crop",
-          altText: "Pearl pendant details close up",
         },
       ],
       variants: [
@@ -151,7 +143,7 @@ async function seed() {
       tags: ["earrings", "gold", "huggies", "bestseller"],
       images: [
         {
-          url: "https://images.unsplash.com/photo-1617038220319-276d3cfab638?w=1200&q=85&auto=format&fit=crop",
+          url: "https://res.cloudinary.com/io2tbyjp/image/upload/v1795766219/dainty-dazzle/dainty-dazzle/03-story-section-craftsmanship.jpg",
           altText: "Solstice Textured Huggie Earrings",
         },
       ],
@@ -182,7 +174,7 @@ async function seed() {
       tags: ["necklaces", "chains", "new", "gold"],
       images: [
         {
-          url: "https://images.unsplash.com/photo-1599643477877-530eb83abc8e?w=1200&q=85&auto=format&fit=crop",
+          url: "https://res.cloudinary.com/io2tbyjp/image/upload/v1795766227/dainty-dazzle/dainty-dazzle/07-product-snake-chain.jpg",
           altText: "Serpentine Herringbone Snake Chain Necklace",
         },
       ],
@@ -240,7 +232,7 @@ async function seed() {
       id: "hero",
       sectionKey: "hero",
       data: {
-        imageUrl: "https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=1920&q=85&auto=format&fit=crop",
+        imageUrl: "https://res.cloudinary.com/io2tbyjp/image/upload/v1795766214/dainty-dazzle/dainty-dazzle/01-hero-banner.jpg",
         headline: "Dainty Dazzle",
         subtitle: "True beauty shines from within, and our jewelry merely reflects it.",
         ctaText: "SHOP NOW ↗",
@@ -262,7 +254,7 @@ async function seed() {
       id: "editorial",
       sectionKey: "editorial",
       data: {
-        imageUrl: "https://images.unsplash.com/photo-1611591437281-460bfbe1220a?w=1920&q=85&auto=format&fit=crop",
+        imageUrl: "https://res.cloudinary.com/io2tbyjp/image/upload/v1795766216/dainty-dazzle/dainty-dazzle/02-editorial-banner-elegance.jpg",
         headline: "Elegance in every detail.",
         subtitle: "Handcrafted with love, designed to be worn every single day.",
       },
@@ -271,7 +263,7 @@ async function seed() {
       id: "story",
       sectionKey: "story",
       data: {
-        imageUrl: "https://images.unsplash.com/photo-1617038220319-276d3cfab638?w=1200&q=85&auto=format&fit=crop",
+        imageUrl: "https://res.cloudinary.com/io2tbyjp/image/upload/v1795766219/dainty-dazzle/dainty-dazzle/03-story-section-craftsmanship.jpg",
         eyebrow: "Our Story",
         headline: "We believe\nin our process.",
         paragraph1: "Every piece of Dainty Dazzle jewelry is crafted with intention. From selecting materials to the final polish, we pour care into every step.",
@@ -284,7 +276,7 @@ async function seed() {
       id: "bottom-banner",
       sectionKey: "bottom-banner",
       data: {
-        imageUrl: "https://images.unsplash.com/photo-1630019852942-f89202989a59?w=1920&q=85&auto=format&fit=crop",
+        imageUrl: "https://res.cloudinary.com/io2tbyjp/image/upload/v1795766221/dainty-dazzle/dainty-dazzle/04-editorial-banner-technique.jpg",
         headline: "Emotion embraces technique.",
         subtitle: "Where craftsmanship meets quiet confidence.",
       },
