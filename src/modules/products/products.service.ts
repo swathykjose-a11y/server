@@ -238,11 +238,11 @@ export class ProductsService {
   }
 
   async invalidateCache(handle?: string): Promise<void> {
+    await cache.flush();
     if (handle) {
       await cache.del(`product:handle:${handle.toLowerCase()}`);
     }
-    // Delete listing caches or set short TTL
-    logger.info(`Product cache invalidated for handle: ${handle || "all"}`);
+    logger.info(`Product cache flushed completely for handle: ${handle || "all"}`);
   }
 }
 

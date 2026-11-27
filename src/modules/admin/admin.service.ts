@@ -15,6 +15,7 @@ import { productsService } from "../products/products.service.js";
 import { logger } from "../../lib/logger.js";
 import { AppError } from "../../middlewares/error-handler.js";
 import { STORE_UPI, buildUpiUri } from "../../config/store-payment.js";
+import { triggerStorefrontRevalidation } from "../../lib/revalidate.js";
 
 export class AdminService {
   async listOrders(params?: { status?: string; limit?: number; offset?: number }) {
@@ -220,6 +221,16 @@ export class AdminService {
     // Invalidate Redis product cache
     await productsService.invalidateCache(input.handle);
 
+    // Trigger instant storefront revalidation webhook
+    triggerStorefrontRevalidation([
+      "/",
+      "/products",
+      "/collections/earrings",
+      "/collections/necklaces",
+      "/collections/new-arrivals",
+      `/products/${input.handle}`,
+    ]).catch((err) => logger.warn("[REVALIDATE] async failure", err));
+
     return productsService.getProductByHandle(input.handle);
   }
 
@@ -234,6 +245,17 @@ export class AdminService {
     await db.update(productsTable).set({ isActive: false, updatedAt: new Date() }).where(eq(productsTable.id, productId));
 
     await productsService.invalidateCache(existing.handle);
+
+    // Trigger instant storefront revalidation webhook
+    triggerStorefrontRevalidation([
+      "/",
+      "/products",
+      "/collections/earrings",
+      "/collections/necklaces",
+      "/collections/new-arrivals",
+      `/products/${existing.handle}`,
+    ]).catch((err) => logger.warn("[REVALIDATE] async failure", err));
+
     logger.info(`Product ${existing.handle} marked inactive`);
     return { success: true, message: "Product deactivated successfully" };
   }

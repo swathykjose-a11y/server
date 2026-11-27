@@ -119,6 +119,18 @@ export class DistributedCacheService {
     }
   }
 
+  async flush(): Promise<void> {
+    try {
+      if (this.redis) {
+        await this.redis.flushdb();
+      } else if (this.memoryFallback) {
+        this.memoryFallback = new MemoryCacheFallback();
+      }
+    } catch (err) {
+      logger.error("Redis FLUSH error", err);
+    }
+  }
+
   /**
    * Acquire a distributed lock. Returns true if lock was acquired, false otherwise.
    * Useful for background jobs and idempotency locking.
