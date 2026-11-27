@@ -12,6 +12,7 @@ import {
 import { z } from "zod";
 import { updateOrderStatusSchema, upsertProductSchema, verifyPaymentSchema } from "./admin.schema.js";
 import { productsService } from "../products/products.service.js";
+import { collectionsService } from "../collections/collections.service.js";
 import { logger } from "../../lib/logger.js";
 import { AppError } from "../../middlewares/error-handler.js";
 import { STORE_UPI, buildUpiUri } from "../../config/store-payment.js";
@@ -168,6 +169,20 @@ export class AdminService {
   async upsertProduct(input: z.infer<typeof upsertProductSchema>) {
     const productId = input.id || `prod_${crypto.randomUUID()}`;
 
+    // Handle category/collection linking
+    let targetCollectionId: string | null = null;
+    let categoryTag: string | null = null;
+
+    if (input.category && input.category.trim()) {
+      const catTitle = input.category.trim();
+      targetCollectionId = await collectionsService.ensureCollection(catTitle);
+      categoryTag = catTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    }
+
+    const finalTags = Array.from(
+      new Set([...(input.tags || []), ...(categoryTag ? [categoryTag] : [])]),
+    );
+
     const productValues = {
       id: productId,
       handle: input.handle.toLowerCase(),
@@ -178,7 +193,7 @@ export class AdminService {
       minPrice: input.minPrice.toFixed(2),
       compareAtPrice: input.compareAtPrice ? input.compareAtPrice.toFixed(2) : null,
       currency: "INR",
-      tags: input.tags,
+      tags: finalTags,
       images: input.images as any,
       isActive: true,
       updatedAt: new Date(),
@@ -208,9 +223,14 @@ export class AdminService {
       });
     }
 
-    if (input.collectionIds && input.collectionIds.length > 0) {
+    const collectionIdsToLink = new Set<string>(input.collectionIds || []);
+    if (targetCollectionId) {
+      collectionIdsToLink.add(targetCollectionId);
+    }
+
+    if (collectionIdsToLink.size > 0) {
       await db.delete(collectionProductsTable).where(eq(collectionProductsTable.productId, productId));
-      for (const colId of input.collectionIds) {
+      for (const colId of collectionIdsToLink) {
         await db
           .insert(collectionProductsTable)
           .values({ collectionId: colId, productId, sortOrder: 0 })

@@ -14,12 +14,46 @@ export interface FormattedCollection {
 }
 
 export class CollectionsService {
+  async ensureCollection(title: string): Promise<string> {
+    const handle = title.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const id = `col_${handle.replace(/-/g, "_")}`;
+
+    const [existing] = await db
+      .select()
+      .from(collectionsTable)
+      .where(eq(collectionsTable.handle, handle))
+      .limit(1);
+
+    if (existing) {
+      return existing.id;
+    }
+
+    await db
+      .insert(collectionsTable)
+      .values({
+        id,
+        handle,
+        title,
+        description: `Handcrafted ${title.toLowerCase()} collection designed for everyday elegance.`,
+      })
+      .onConflictDoNothing();
+
+    await cache.del("collections:list");
+    return id;
+  }
+
   async getCollections(): Promise<FormattedCollection[]> {
     const cacheKey = "collections:list";
     const cached = await cache.get<FormattedCollection[]>(cacheKey);
     if (cached) return cached;
 
-    const rows = await db.select().from(collectionsTable);
+    // Ensure default collections exist if table is empty
+    let rows = await db.select().from(collectionsTable);
+    if (rows.length === 0) {
+      await this.ensureCollection("Earrings");
+      await this.ensureCollection("Necklaces");
+      rows = await db.select().from(collectionsTable);
+    }
 
     const formatted: FormattedCollection[] = rows.map((r) => ({
       id: r.id,
@@ -34,26 +68,34 @@ export class CollectionsService {
   }
 
   async getCollectionByHandle(handle: string): Promise<FormattedCollection | null> {
-    const cacheKey = `collection:handle:${handle.toLowerCase()}`;
+    const cleanHandle = handle.toLowerCase().trim();
+    const cacheKey = `collection:handle:${cleanHandle}`;
     const cached = await cache.get<FormattedCollection>(cacheKey);
     if (cached) return cached;
 
-    const [row] = await db
+    let [row] = await db
       .select()
       .from(collectionsTable)
-      .where(eq(collectionsTable.handle, handle))
+      .where(eq(collectionsTable.handle, cleanHandle))
       .limit(1);
+
+    if (!row) {
+      // Auto-ensure standard collection (e.g. necklaces -> Necklaces, earrings -> Earrings)
+      const title = cleanHandle.charAt(0).toUpperCase() + cleanHandle.slice(1);
+      const colId = await this.ensureCollection(title);
+      [row] = await db.select().from(collectionsTable).where(eq(collectionsTable.id, colId)).limit(1);
+    }
 
     if (!row) return null;
 
     // Fetch products belonging to this collection
-    const { products } = await productsService.getProducts({ collection: handle, first: 50 });
+    const { products } = await productsService.getProducts({ collection: cleanHandle, first: 50 });
 
     const formatted: FormattedCollection = {
       id: row.id,
       handle: row.handle,
       title: row.title,
-      description: row.description,
+      description: row.description || `Explore our handcrafted ${row.title.toLowerCase()} collection.`,
       image: row.imageUrl ? { url: row.imageUrl, altText: row.imageAlt } : undefined,
       products,
     };

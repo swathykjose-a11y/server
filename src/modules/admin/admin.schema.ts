@@ -35,6 +35,7 @@ export const upsertProductSchema = z.object({
   totalInventory: z.coerce.number().default(0),
   minPrice: z.coerce.number().positive(),
   compareAtPrice: z.coerce.number().positive().optional(),
+  category: z.string().optional(),
   tags: z.array(z.string()).default([]),
   images: z
     .array(

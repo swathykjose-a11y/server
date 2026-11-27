@@ -94,16 +94,38 @@ export class ProductsService {
 
     // If filtered by collection
     if (params.collection) {
+      const colHandle = params.collection.toLowerCase().trim();
+      const singular = colHandle.endsWith("s") ? colHandle.slice(0, -1) : colHandle;
+
       const colRows = await db
         .select({ product: productsTable })
         .from(productsTable)
-        .innerJoin(collectionProductsTable, eq(productsTable.id, collectionProductsTable.productId))
-        .innerJoin(collectionsTable, eq(collectionProductsTable.collectionId, collectionsTable.id))
-        .where(and(eq(productsTable.isActive, true), eq(collectionsTable.handle, params.collection)))
+        .leftJoin(collectionProductsTable, eq(productsTable.id, collectionProductsTable.productId))
+        .leftJoin(collectionsTable, eq(collectionProductsTable.collectionId, collectionsTable.id))
+        .where(
+          and(
+            eq(productsTable.isActive, true),
+            or(
+              eq(collectionsTable.handle, colHandle),
+              sql`${productsTable.tags}::text ILIKE ${'%' + colHandle + '%'}`,
+              sql`${productsTable.tags}::text ILIKE ${'%' + singular + '%'}`,
+              ilike(productsTable.title, `%${singular}%`),
+            ),
+          ),
+        )
         .orderBy(desc(productsTable.createdAt))
-        .limit(limit + 1);
+        .limit(limit * 2);
 
-      return this.enrichAndPaginate(colRows.map((r) => r.product), limit, cacheKey);
+      const seenIds = new Set<string>();
+      const uniqueProducts: (typeof productsTable.$inferSelect)[] = [];
+      for (const r of colRows) {
+        if (!seenIds.has(r.product.id)) {
+          seenIds.add(r.product.id);
+          uniqueProducts.push(r.product);
+        }
+      }
+
+      return this.enrichAndPaginate(uniqueProducts.slice(0, limit + 1), limit, cacheKey);
     }
 
     // If search keyword provided
