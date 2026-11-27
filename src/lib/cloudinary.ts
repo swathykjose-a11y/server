@@ -21,11 +21,20 @@ export class CloudinaryService {
       const result = await cloudinary.uploader.upload(file, {
         folder,
         resource_type: "image",
-        transformation: [{ quality: "auto", fetch_format: "auto" }],
+        transformation: [
+          { width: 1600, height: 1600, crop: "limit" },
+          { quality: "auto:good", fetch_format: "auto" },
+        ],
       });
 
+      // Deliver via Cloudinary CDN with automated modern format (AVIF/WebP) & adaptive compression
+      let optimizedUrl = result.secure_url;
+      if (optimizedUrl.includes("/upload/")) {
+        optimizedUrl = optimizedUrl.replace("/upload/", "/upload/f_auto,q_auto/");
+      }
+
       return {
-        url: result.secure_url,
+        url: optimizedUrl,
         publicId: result.public_id,
         width: result.width,
         height: result.height,
