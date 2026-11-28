@@ -1,10 +1,12 @@
 import crypto from "crypto";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, sql, and, or, isNull, gte } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { ordersTable, orderItemsTable, productsTable, productVariantsTable } from "../../db/schema/index.js";
 import { CreateOrderInput } from "./orders.schema.js";
 import { emailService } from "../../lib/resend.js";
 import { sendFreeAdminPhoneAlert } from "../../lib/notify.js";
+import { cache } from "../../lib/redis.js";
+import { productsService } from "../products/products.service.js";
 import { logger } from "../../lib/logger.js";
 import { AppError } from "../../middlewares/error-handler.js";
 import { orderViewToken } from "../../lib/auth.js";
@@ -79,49 +81,72 @@ export class OrdersService {
 
     const priced = await this.priceFromCatalog(input.items);
 
-    const [createdOrder] = await db
-      .insert(ordersTable)
-      .values({
-        id: orderId,
-        orderNumber,
-        customerFirstName: input.customer.firstName,
-        customerLastName: input.customer.lastName,
-        customerEmail: input.customer.email.toLowerCase(),
-        customerPhone: input.customer.phone,
-        addressLine1: input.customer.addressLine1,
-        addressLine2: input.customer.addressLine2,
-        city: input.customer.city,
-        state: input.customer.state,
-        postalCode: input.customer.postalCode,
-        country: input.customer.country,
-        subtotal: priced.subtotal.toFixed(2),
-        shippingFee: priced.shippingFee.toFixed(2),
-        total: priced.total.toFixed(2),
-        currency: "INR",
-        paymentMethod: "upi",
-        paymentStatus: "pending",
-        status: "pending",
-        idempotencyKey,
-        notes: input.notes
-          ? `UTR: ${input.transactionId} | ${input.notes}`
-          : `UTR: ${input.transactionId}`,
-      })
-      .returning();
+    // Atomically reserve stock for every variant (sorted to prevent deadlocks)
+    const reserved = await this.reserveInventoryAtomically(priced.lines);
 
-    for (const item of priced.lines) {
-      await db.insert(orderItemsTable).values({
-        id: `item_${crypto.randomUUID()}`,
-        orderId: createdOrder.id,
-        productId: item.productId,
-        productTitle: item.productTitle,
-        productHandle: item.productHandle,
-        variantId: item.variantId,
-        variantTitle: item.variantTitle,
-        price: item.price.toFixed(2),
-        quantity: item.quantity,
-        imageUrl: item.imageUrl,
-      });
+    let createdOrder: typeof ordersTable.$inferSelect;
+    try {
+      const [inserted] = await db
+        .insert(ordersTable)
+        .values({
+          id: orderId,
+          orderNumber,
+          customerFirstName: input.customer.firstName,
+          customerLastName: input.customer.lastName,
+          customerEmail: input.customer.email.toLowerCase(),
+          customerPhone: input.customer.phone,
+          addressLine1: input.customer.addressLine1,
+          addressLine2: input.customer.addressLine2,
+          city: input.customer.city,
+          state: input.customer.state,
+          postalCode: input.customer.postalCode,
+          country: input.customer.country,
+          subtotal: priced.subtotal.toFixed(2),
+          shippingFee: priced.shippingFee.toFixed(2),
+          total: priced.total.toFixed(2),
+          currency: "INR",
+          paymentMethod: "upi",
+          paymentStatus: "pending",
+          status: "pending",
+          idempotencyKey,
+          notes: input.notes
+            ? `UTR: ${input.transactionId} | ${input.notes}`
+            : `UTR: ${input.transactionId}`,
+        })
+        .returning();
+
+      createdOrder = inserted;
+
+      for (const item of priced.lines) {
+        await db.insert(orderItemsTable).values({
+          id: `item_${crypto.randomUUID()}`,
+          orderId: createdOrder.id,
+          productId: item.productId,
+          productTitle: item.productTitle,
+          productHandle: item.productHandle,
+          variantId: item.variantId,
+          variantTitle: item.variantTitle,
+          price: item.price.toFixed(2),
+          quantity: item.quantity,
+          imageUrl: item.imageUrl,
+        });
+      }
+    } catch (err) {
+      await this.releaseInventory(reserved).catch((releaseErr) =>
+        logger.error("Failed to release inventory after order insert failure", releaseErr),
+      );
+      throw err;
     }
+
+    // Sync parent product totalInventory & invalidate Redis caches
+    const affectedProductIds = [...new Set(priced.lines.map((l) => l.productId))];
+    await this.syncProductInventoryTotals(affectedProductIds).catch((err) =>
+      logger.warn("Failed to sync product inventory totals", err),
+    );
+    await Promise.allSettled([
+      productsService.invalidateCache(),
+      cache.del("admin:orders:list:all:50:0", "admin:payments:overview"),
+    ]);
 
     logger.info(`Order #${orderNumber} created for UPI payment of ₹${priced.total.toFixed(0)}`);
 
@@ -195,6 +220,110 @@ export class OrdersService {
     const subtotal = lines.reduce((sum, line) => sum + line.price * line.quantity, 0);
     const shippingFee = subtotal >= FREE_SHIPPING_MIN_INR ? 0 : SHIPPING_FEE_INR;
     return { lines, subtotal, shippingFee, total: subtotal + shippingFee };
+  }
+
+  /**
+   * Atomically decrements variant stock using conditional UPDATE ... WHERE quantity_available >= qty.
+   * Prevents race conditions when two buyers purchase the last item concurrently.
+   */
+  private async reserveInventoryAtomically(
+    lines: Array<{ productId: string; productTitle: string; variantId: string; quantity: number }>,
+  ): Promise<Array<{ variantId: string; quantity: number; tracked: boolean }>> {
+    const qtyByVariant = new Map<string, { quantity: number; productTitle: string }>();
+    for (const line of lines) {
+      const prev = qtyByVariant.get(line.variantId);
+      qtyByVariant.set(line.variantId, {
+        quantity: (prev?.quantity || 0) + line.quantity,
+        productTitle: line.productTitle,
+      });
+    }
+
+    const sortedEntries = [...qtyByVariant.entries()].sort(([a], [b]) => a.localeCompare(b));
+    const reserved: Array<{ variantId: string; quantity: number; tracked: boolean }> = [];
+
+    for (const [variantId, { quantity, productTitle }] of sortedEntries) {
+      const updated = await db
+        .update(productVariantsTable)
+        .set({
+          quantityAvailable: sql`CASE WHEN ${productVariantsTable.quantityAvailable} IS NULL THEN NULL ELSE ${productVariantsTable.quantityAvailable} - ${quantity} END`,
+          availableForSale: sql`CASE WHEN ${productVariantsTable.quantityAvailable} IS NOT NULL AND (${productVariantsTable.quantityAvailable} - ${quantity}) <= 0 THEN false ELSE ${productVariantsTable.availableForSale} END`,
+        })
+        .where(
+          and(
+            eq(productVariantsTable.id, variantId),
+            eq(productVariantsTable.availableForSale, true),
+            or(
+              isNull(productVariantsTable.quantityAvailable),
+              gte(productVariantsTable.quantityAvailable, quantity),
+            ),
+          ),
+        )
+        .returning({
+          id: productVariantsTable.id,
+          quantityAvailable: productVariantsTable.quantityAvailable,
+        });
+
+      if (updated.length === 0) {
+        await this.releaseInventory(reserved);
+        throw new AppError(
+          `Sorry, ${productTitle} just sold out or does not have enough stock.`,
+          409,
+          "INSUFFICIENT_STOCK",
+        );
+      }
+
+      reserved.push({
+        variantId,
+        quantity,
+        tracked: updated[0].quantityAvailable !== null,
+      });
+    }
+
+    return reserved;
+  }
+
+  private async releaseInventory(
+    reserved: Array<{ variantId: string; quantity: number; tracked: boolean }>,
+  ): Promise<void> {
+    for (const item of reserved) {
+      if (!item.tracked) continue;
+      await db
+        .update(productVariantsTable)
+        .set({
+          quantityAvailable: sql`COALESCE(${productVariantsTable.quantityAvailable}, 0) + ${item.quantity}`,
+          availableForSale: true,
+        })
+        .where(eq(productVariantsTable.id, item.variantId));
+    }
+  }
+
+  private async syncProductInventoryTotals(productIds: string[]): Promise<void> {
+    for (const productId of productIds) {
+      const variants = await db
+        .select({
+          quantityAvailable: productVariantsTable.quantityAvailable,
+          availableForSale: productVariantsTable.availableForSale,
+        })
+        .from(productVariantsTable)
+        .where(eq(productVariantsTable.productId, productId));
+
+      if (variants.length === 0) continue;
+
+      const anyAvailable = variants.some((v) => v.availableForSale);
+      const totalInventory = variants.reduce(
+        (sum, v) => sum + (v.quantityAvailable ?? 0),
+        0,
+      );
+
+      await db
+        .update(productsTable)
+        .set({
+          totalInventory,
+          availableForSale: anyAvailable,
+          updatedAt: new Date(),
+        })
+        .where(eq(productsTable.id, productId));
+    }
   }
 
   private checkoutResult(order: Awaited<ReturnType<OrdersService["getOrderById"]>>) {

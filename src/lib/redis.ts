@@ -65,24 +65,41 @@ class MemoryCacheFallback {
 export class DistributedCacheService {
   private redis: Redis | null = null;
   private memoryFallback: MemoryCacheFallback | null = null;
+  private initialized = false;
 
-  constructor() {
-    if (env.UPSTASH_REDIS_REST_URL && env.UPSTASH_REDIS_REST_TOKEN) {
-      this.redis = new Redis({
-        url: env.UPSTASH_REDIS_REST_URL,
-        token: env.UPSTASH_REDIS_REST_TOKEN,
-      });
+  /**
+   * Lazily resolve Upstash Redis client so Cloudflare Worker env bindings
+   * populated inside fetch() are picked up properly.
+   */
+  private getClient(): Redis | null {
+    if (this.redis) return this.redis;
+
+    const url = process.env.UPSTASH_REDIS_REST_URL || env.UPSTASH_REDIS_REST_URL;
+    const token = process.env.UPSTASH_REDIS_REST_TOKEN || env.UPSTASH_REDIS_REST_TOKEN;
+
+    if (url && token) {
+      this.redis = new Redis({ url, token });
+      this.initialized = true;
       logger.info("[REDIS] Upstash Redis client initialized");
-    } else {
-      this.memoryFallback = new MemoryCacheFallback();
-      logger.warn("[REDIS WARNING] UPSTASH_REDIS_REST_URL not configured. Using in-memory fallback cache.");
+      return this.redis;
     }
+
+    if (!this.initialized) {
+      this.initialized = true;
+      this.memoryFallback = new MemoryCacheFallback();
+      logger.warn("[REDIS WARNING] UPSTASH_REDIS_REST_URL/TOKEN not configured. Using in-memory fallback cache.");
+    }
+    if (!this.memoryFallback) {
+      this.memoryFallback = new MemoryCacheFallback();
+    }
+    return null;
   }
 
   async get<T>(key: string): Promise<T | null> {
+    const client = this.getClient();
     try {
-      if (this.redis) {
-        return await this.redis.get<T>(key);
+      if (client) {
+        return await client.get<T>(key);
       }
       return await this.memoryFallback!.get<T>(key);
     } catch (err) {
@@ -92,12 +109,13 @@ export class DistributedCacheService {
   }
 
   async set(key: string, value: unknown, ttlSeconds?: number): Promise<void> {
+    const client = this.getClient();
     try {
-      if (this.redis) {
+      if (client) {
         if (ttlSeconds) {
-          await this.redis.set(key, value, { ex: ttlSeconds });
+          await client.set(key, value, { ex: ttlSeconds });
         } else {
-          await this.redis.set(key, value);
+          await client.set(key, value);
         }
       } else {
         await this.memoryFallback!.set(key, value, { ex: ttlSeconds });
@@ -108,9 +126,11 @@ export class DistributedCacheService {
   }
 
   async del(...keys: string[]): Promise<void> {
+    if (keys.length === 0) return;
+    const client = this.getClient();
     try {
-      if (this.redis) {
-        await this.redis.del(...keys);
+      if (client) {
+        await client.del(...keys);
       } else {
         await this.memoryFallback!.del(...keys);
       }
@@ -120,9 +140,10 @@ export class DistributedCacheService {
   }
 
   async flush(): Promise<void> {
+    const client = this.getClient();
     try {
-      if (this.redis) {
-        await this.redis.flushdb();
+      if (client) {
+        await client.flushdb();
       } else if (this.memoryFallback) {
         this.memoryFallback = new MemoryCacheFallback();
       }
@@ -131,16 +152,12 @@ export class DistributedCacheService {
     }
   }
 
-  /**
-   * Acquire a distributed lock. Returns true if lock was acquired, false otherwise.
-   * Useful for background jobs and idempotency locking.
-   */
   async acquireLock(lockKey: string, ttlSeconds: number): Promise<boolean> {
     const key = `lock:${lockKey}`;
+    const client = this.getClient();
     try {
-      if (this.redis) {
-        // NX sets if Not eXists
-        const res = await this.redis.set(key, "locked", { nx: true, ex: ttlSeconds });
+      if (client) {
+        const res = await client.set(key, "locked", { nx: true, ex: ttlSeconds });
         return res === "OK";
       } else {
         const res = await this.memoryFallback!.setnx(key, "locked", ttlSeconds);
@@ -157,9 +174,6 @@ export class DistributedCacheService {
     await this.del(key);
   }
 
-  /**
-   * Distributed sliding window rate limiter
-   */
   async checkRateLimit(
     identifier: string,
     limit: number,
@@ -167,14 +181,15 @@ export class DistributedCacheService {
     failClosed = false,
   ): Promise<{ success: boolean; remaining: number; reset: number }> {
     const key = `ratelimit:${identifier}`;
+    const client = this.getClient();
     try {
-      if (this.redis) {
-        const count = await this.redis.incr(key);
+      if (client) {
+        const count = await client.incr(key);
         if (count === 1) {
-          await this.redis.expire(key, windowSeconds);
+          await client.expire(key, windowSeconds);
         } else {
-          const ttl = await this.redis.ttl(key);
-          if (ttl < 0) await this.redis.expire(key, windowSeconds);
+          const ttl = await client.ttl(key);
+          if (ttl < 0) await client.expire(key, windowSeconds);
         }
         const remaining = Math.max(0, limit - count);
         return {
@@ -201,12 +216,11 @@ export class DistributedCacheService {
   }
 
   async healthCheck(): Promise<boolean> {
+    const client = this.getClient();
+    if (!client) return false;
     try {
-      if (this.redis) {
-        const ping = await this.redis.ping();
-        return ping === "PONG";
-      }
-      return true;
+      const ping = await client.ping();
+      return ping === "PONG";
     } catch {
       return false;
     }

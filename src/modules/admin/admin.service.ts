@@ -14,6 +14,7 @@ import { updateOrderStatusSchema, upsertProductSchema, verifyPaymentSchema } fro
 import { productsService } from "../products/products.service.js";
 import { collectionsService } from "../collections/collections.service.js";
 import { logger } from "../../lib/logger.js";
+import { cache } from "../../lib/redis.js";
 import { AppError } from "../../middlewares/error-handler.js";
 import { STORE_UPI, buildUpiUri } from "../../config/store-payment.js";
 import { triggerStorefrontRevalidation } from "../../lib/revalidate.js";
@@ -22,6 +23,10 @@ export class AdminService {
   async listOrders(params?: { status?: string; limit?: number; offset?: number }) {
     const limit = params?.limit || 50;
     const offset = params?.offset || 0;
+    const cacheKey = `admin:orders:list:${params?.status || "all"}:${limit}:${offset}`;
+
+    const cached = await cache.get<Array<typeof ordersTable.$inferSelect>>(cacheKey);
+    if (cached) return cached;
 
     let query = db.select().from(ordersTable).orderBy(desc(ordersTable.createdAt)).limit(limit).offset(offset);
 
@@ -36,6 +41,7 @@ export class AdminService {
     }
 
     const rows = await query;
+    await cache.set(cacheKey, rows, 30); // 30s Redis cache to offload 4s admin polling
     return rows;
   }
 
@@ -65,6 +71,7 @@ export class AdminService {
       .returning();
 
     logger.info(`Admin updated order #${updated.orderNumber} status to [${updated.status}], payment [${updated.paymentStatus}]`);
+    await cache.del("admin:orders:list:all:50:0", "admin:payments:overview");
     return updated;
   }
 
@@ -100,6 +107,7 @@ export class AdminService {
       .returning();
 
     logger.info(`Admin verified payment for order #${updated.orderNumber}: paymentStatus=[${newPaymentStatus}], status=[${newStatus}]`);
+    await cache.del("admin:orders:list:all:50:0", "admin:payments:overview");
     return updated;
   }
 
